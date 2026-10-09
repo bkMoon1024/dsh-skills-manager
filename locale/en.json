@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Skills Manager",
+    "description": "Manage local DSH skills: create, edit, delete, and toggle model/user invocation."
+  }
+}

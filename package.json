@@ -1,0 +1,35 @@
+{
+  "name": "@local/skills-manager",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Manage local DSH skills in a Settings page: list, inspect, create, edit, delete, and toggle model/user invocation.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/daha1216/dsh-skills-manager.git"
+  },
+  "homepage": "https://github.com/daha1216/dsh-skills-manager#readme",
+  "bugs": {
+    "url": "https://github.com/daha1216/dsh-skills-manager/issues"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "locale",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  }
+}
