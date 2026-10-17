@@ -1,8 +1,15 @@
 {
   "name": "@local/skills-manager",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Manage local DSH skills in a Settings page: list, inspect, create, edit, delete, and toggle model/user invocation.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/daha1216/dsh-skills-manager.git"

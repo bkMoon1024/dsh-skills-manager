@@ -8,6 +8,8 @@ window.__ModuleLoader__.load({
     const API = "/skills-manager/api";
     const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+    const NS = "skills-manager";
+
     const DICTS = {
       zh: {
         "nav": "技能",
@@ -16,11 +18,17 @@ window.__ModuleLoader__.load({
         "toolbar.new": "新建技能",
         "toolbar.refresh": "刷新",
         "toolbar.search": "搜索技能名称、描述或时机…",
-        "toolbar.count": (n) => `共 ${n} 个技能`,
-        "toolbar.filterCount": (filtered, total) => `筛选出 ${filtered} / ${total} 个技能`,
-        "toolbar.rootTitle": (root) => `技能存储目录：${root}`,
+        "toolbar.count": "共 {n} 个技能",
+        "toolbar.filterCount": "筛选出 {filtered} / {total} 个技能",
+        "toolbar.rootTitle": "技能存储目录：{root}",
         "toolbar.copyPath": "复制目录路径",
         "toolbar.copiedPath": "路径已复制",
+        "loading": "正在加载技能列表…",
+        "search.label": "搜索技能",
+        "notice.saved": "已保存",
+        "notice.deleted": "已删除，可在技能目录 .trash 中找回",
+        "provider.title": "技能提供器未就绪",
+        "provider.desc": "状态：{state}（已尝试 {attempts} 次）。会话可能只能看到内置技能。",
         "empty.rootMissingTitle": "技能目录尚未创建",
         "empty.rootMissing": "本地技能目录尚未创建。点击“新建技能”创建第一个技能，系统将自动创建 ~/.dsh/skills 目录。",
         "empty.noneTitle": "暂无自定义技能",
@@ -54,24 +62,31 @@ window.__ModuleLoader__.load({
         "card.edit": "编辑技能",
         "card.delete": "删除",
         "card.deleteConfirmTitle": "确定删除此技能？",
-        "card.deleteConfirmMsg": (name) => `技能“${name}”及其所有本地文件将被永久删除，此操作不可撤销。`,
+        "card.deleteConfirmMsg": "技能“{name}”及其所有本地文件将被永久删除，此操作不可撤销。",
         "card.confirmDelete": "永久删除",
         "card.cancelDelete": "取消",
         "card.copyCode": "复制指令",
         "card.copiedCode": "已复制",
         "card.noFile": "该目录缺少 SKILL.md 文件，无法正常读取。你可以删除该目录，或重新保存此技能进行重建。",
         "card.problemsTitle": "检测到配置问题：",
+        "card.policyInvalid": "该技能配置异常，先修复后才能切换调用策略。",
+        "delete.busy": "正在删除…",
+        "policy.busy": "正在保存…",
         "editor.newTitle": "新建技能",
-        "editor.editTitle": (name) => `编辑技能 · ${name}`,
+        "editor.editTitle": "编辑技能 · {name}",
         "editor.subtitle": "配置技能标识、触发意图与详细的 Markdown 指令正文。",
         "editor.name": "技能唯一标识 (name)",
         "editor.nameHint": "小写 kebab-case，仅包含英文字母、数字和连字符，如 web-search",
+        "editor.namePlaceholder": "例如：my-skill",
         "editor.description": "技能描述 (description)",
         "editor.descriptionHint": "简明概括此技能的核心功能，模型将据此理解其用途（必填）",
+        "editor.descriptionPlaceholder": "例如：提供网络搜索与权威信息检索能力",
         "editor.whenToUse": "触发时机 (whenToUse，可选)",
         "editor.whenToUseHint": "指导模型在何种具体意图或边界场景下主动调用此技能",
+        "editor.whenToUsePlaceholder": "例如：当用户需要查询实时信息、最新新闻或网络资料时调用",
         "editor.body": "指令正文 (Markdown)",
         "editor.bodyHint": "详细的工作流程、输入输出规范、边界约束与示例（支持完整 Markdown）",
+        "editor.bodyPlaceholder": "# 技能指令与工作流程\n\n在此输入 Markdown 正文…",
         "editor.modelSwitch": "允许模型自主调用",
         "editor.userSwitch": "允许用户手动调用",
         "editor.save": "保存技能",
@@ -80,7 +95,13 @@ window.__ModuleLoader__.load({
         "editor.shortcutHint": "Esc 取消 · Ctrl + S 快速保存",
         "editor.descRequired": "技能描述不能为空",
         "editor.nameInvalid": "技能标识必须是小写 kebab-case（例如 my-skill）",
-        "editor.chars": (n) => `${Number(n).toLocaleString()} 字`,
+        "editor.chars": "{n} 字",
+        "editor.problemsBanner": "该技能当前存在配置问题，保存会重写 frontmatter：",
+        "editor.discardTitle": "放弃未保存的修改？",
+        "editor.discardMsg": "当前编辑内容尚未保存，离开后将丢失。",
+        "editor.discardConfirm": "放弃修改",
+        "editor.discardCancel": "继续编辑",
+        "editor.unsaved": "有未保存的修改",
       },
       en: {
         "nav": "Skills",
@@ -89,11 +110,17 @@ window.__ModuleLoader__.load({
         "toolbar.new": "New Skill",
         "toolbar.refresh": "Refresh",
         "toolbar.search": "Search skills by name, description, or trigger…",
-        "toolbar.count": (n) => `${n} skill${n === 1 ? "" : "s"}`,
-        "toolbar.filterCount": (filtered, total) => `${filtered} of ${total} skills`,
-        "toolbar.rootTitle": (root) => `Skills directory: ${root}`,
+        "toolbar.count": "{n} skills",
+        "toolbar.filterCount": "{filtered} of {total} skills",
+        "toolbar.rootTitle": "Skills directory: {root}",
         "toolbar.copyPath": "Copy path",
         "toolbar.copiedPath": "Path copied",
+        "loading": "Loading skills…",
+        "search.label": "Search skills",
+        "notice.saved": "Saved",
+        "notice.deleted": "Deleted — recoverable from the .trash folder",
+        "provider.title": "Skill provider not ready",
+        "provider.desc": "State: {state} after {attempts} attempt(s). Sessions may only see bundled skills.",
         "empty.rootMissingTitle": "Skills directory not found",
         "empty.rootMissing": "The skills directory does not exist yet. Click “New Skill” to create ~/.dsh/skills and your first skill.",
         "empty.noneTitle": "No skills yet",
@@ -127,24 +154,31 @@ window.__ModuleLoader__.load({
         "card.edit": "Edit",
         "card.delete": "Delete",
         "card.deleteConfirmTitle": "Delete this skill?",
-        "card.deleteConfirmMsg": (name) => `Skill “${name}” and all its local files will be permanently deleted.`,
+        "card.deleteConfirmMsg": "Skill “{name}” and all its local files will be permanently deleted.",
         "card.confirmDelete": "Delete Forever",
         "card.cancelDelete": "Cancel",
         "card.copyCode": "Copy",
         "card.copiedCode": "Copied",
         "card.noFile": "This directory is missing SKILL.md. You can delete it or recreate it by saving a new skill.",
         "card.problemsTitle": "Configuration issues detected:",
+        "card.policyInvalid": "Fix the configuration issues before changing invocation policy.",
+        "delete.busy": "Deleting…",
+        "policy.busy": "Saving…",
         "editor.newTitle": "New Skill",
-        "editor.editTitle": (name) => `Edit · ${name}`,
+        "editor.editTitle": "Edit · {name}",
         "editor.subtitle": "Define skill metadata, invocation settings, and instruction prompts.",
         "editor.name": "Skill Identifier (name)",
         "editor.nameHint": "Unique identifier, lowercase kebab-case only (e.g. web-search)",
+        "editor.namePlaceholder": "e.g. my-skill",
         "editor.description": "Description",
         "editor.descriptionHint": "Summarize what this skill does so models understand when to use it (required)",
+        "editor.descriptionPlaceholder": "e.g. Search the web and retrieve authoritative sources",
         "editor.whenToUse": "When to Use (optional)",
         "editor.whenToUseHint": "Provide explicit conditions or scenarios triggering this skill",
+        "editor.whenToUsePlaceholder": "e.g. When the user asks for real-time news or web research",
         "editor.body": "Instruction Prompt (Markdown)",
         "editor.bodyHint": "Workflows, output guidelines, boundary constraints, and examples (full Markdown supported)",
+        "editor.bodyPlaceholder": "# Skill instructions\n\nWrite the Markdown body here…",
         "editor.modelSwitch": "Allow Model Invocation",
         "editor.userSwitch": "Allow User Invocation",
         "editor.save": "Save Skill",
@@ -153,15 +187,23 @@ window.__ModuleLoader__.load({
         "editor.shortcutHint": "Esc to cancel · Ctrl + S to save",
         "editor.descRequired": "Description is required",
         "editor.nameInvalid": "Name must be lowercase kebab-case (e.g. my-skill)",
-        "editor.chars": (n) => `${Number(n).toLocaleString()} chars`,
+        "editor.chars": "{n} chars",
+        "editor.problemsBanner": "This skill has configuration issues; saving will rewrite its frontmatter:",
+        "editor.discardTitle": "Discard unsaved changes?",
+        "editor.discardMsg": "Your edits have not been saved and will be lost.",
+        "editor.discardConfirm": "Discard",
+        "editor.discardCancel": "Keep editing",
+        "editor.unsaved": "Unsaved changes",
       },
     };
 
-    const LANG = (typeof navigator !== "undefined" && (navigator.language ?? "zh")).toLowerCase().startsWith("zh") ? "zh" : "en";
-    const t = (key, ...args) => {
-      const dict = DICTS[LANG][key] ?? DICTS.zh[key];
-      return typeof dict === "function" ? dict(...args) : dict ?? key;
+    const FALLBACK_LANG = (typeof navigator !== "undefined" && (navigator.language ?? "zh")).toLowerCase().startsWith("zh") ? "zh" : "en";
+    const formatTemplate = (template, params) => {
+      const text = String(template ?? "");
+      if (!params) return text;
+      return text.replace(/\{(\w+)\}/g, (match, name) => (name in params ? String(params[name]) : match));
     };
+    let t = (key, params) => formatTemplate((DICTS[FALLBACK_LANG] ?? DICTS.zh)[key] ?? DICTS.zh[key] ?? key, params);
 
     async function api(path, init) {
       const response = await fetch(API + path, {
@@ -176,11 +218,26 @@ window.__ModuleLoader__.load({
       return payload;
     }
 
+    function legacyCopy(text) {
+      try {
+        if (typeof document === "undefined") return;
+        const area = document.createElement("textarea");
+        area.value = text;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        document.body.removeChild(area);
+      } catch { /* clipboard unavailable */ }
+    }
+
     function copyToClipboard(text) {
       if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        return navigator.clipboard.writeText(text).catch(() => {});
+        return navigator.clipboard.writeText(text).catch(() => legacyCopy(text));
       }
-      return Promise.resolve();
+      return Promise.resolve(legacyCopy(text));
     }
 
     function formatTime(ms) {
@@ -1121,6 +1178,75 @@ window.__ModuleLoader__.load({
   line-height: 1.5;
 }
 
+/* Busy / disabled states */
+.skm-btn[disabled] {
+  opacity: .55;
+  cursor: not-allowed;
+}
+.skm-switch-btn[disabled] {
+  opacity: .6;
+  cursor: not-allowed;
+}
+.skm-policy-card[data-disabled="true"] {
+  opacity: .7;
+}
+.skm-policy-text {
+  cursor: pointer;
+}
+.skm-policy-card[data-disabled="true"] .skm-policy-text {
+  cursor: not-allowed;
+}
+.skm-inline-hint {
+  padding: 10px 12px;
+  border-radius: var(--dsw-radius-md, 8px);
+  background: var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.08));
+  color: var(--dsw-alias-label-secondary, rgba(128,128,128,0.85));
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: 1.5;
+}
+.skm-banner[data-tone="warn"] {
+  border-color: var(--dsw-alias-state-warning-primary, #f08c00);
+  background: color-mix(in srgb, var(--dsw-alias-state-warning-primary, #f08c00) 8%, transparent);
+  color: var(--dsw-alias-state-warning-primary, #f08c00);
+}
+.skm-banner[data-tone="success"] {
+  border-color: var(--dsw-alias-state-success-primary, #2f9e44);
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary, #2f9e44) 8%, transparent);
+  color: var(--dsw-alias-state-success-primary, #2f9e44);
+}
+
+/* Narrow screens: let the toolbar and card rows wrap instead of overflowing */
+@media (max-width: 640px) {
+  .skm-page {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .skm-toolbar {
+    flex-wrap: wrap;
+  }
+  .skm-search-wrap {
+    flex: 1 1 100%;
+  }
+  .skm-toolbar-actions {
+    flex-wrap: wrap;
+  }
+  .skm-facts-bar {
+    flex-wrap: wrap;
+  }
+  .skm-facts-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .skm-row-right .skm-row-mtime {
+    display: none;
+  }
+  .skm-editor-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+}
+
 /* Keyframes & Reduced Motion */
 @keyframes skm-fade-in {
   from { opacity: 0; transform: scale(0.985) translateY(4px); }
@@ -1146,12 +1272,15 @@ window.__ModuleLoader__.load({
 }
 `;
 
-    function Switch({ on, onToggle, label, description, id }) {
+    function Switch({ on, onToggle, label, description, id, disabled }) {
+      const toggle = () => { if (!disabled) onToggle(); };
       return jsxs("div", {
         className: "skm-policy-card",
+        "data-disabled": disabled ? "true" : "false",
         children: [
           jsxs("div", {
             className: "skm-policy-text",
+            onClick: toggle,
             children: [
               jsx("label", { id: id ? `${id}-label` : undefined, className: "skm-policy-title", children: label }),
               description ? jsx("span", { className: "skm-policy-desc", children: description }) : null,
@@ -1162,12 +1291,14 @@ window.__ModuleLoader__.load({
             role: "switch",
             "aria-checked": on ? "true" : "false",
             "aria-labelledby": id ? `${id}-label` : undefined,
+            "aria-disabled": disabled ? "true" : "false",
+            disabled,
             className: "skm-switch-btn",
-            onClick: onToggle,
+            onClick: toggle,
             onKeyDown: (e) => {
               if (e.key === " " || e.key === "Enter") {
                 e.preventDefault();
-                onToggle();
+                toggle();
               }
             },
             children: jsx("span", {
@@ -1180,9 +1311,10 @@ window.__ModuleLoader__.load({
       });
     }
 
-    function SkillCard({ skill, open, onToggle, onEdit, onPolicy, onDelete }) {
+    function SkillCard({ skill, open, onToggle, onEdit, onPolicy, onDelete, pending, panelId }) {
       const [copied, setCopied] = useState(false);
-      const noFile = skill.problems.some((p) => p.includes("SKILL.md"));
+      const missingFile = Boolean(skill.missingFile);
+      const canTogglePolicy = !missingFile && skill.valid;
 
       const handleCopyCode = async (e) => {
         e.stopPropagation();
@@ -1218,6 +1350,7 @@ window.__ModuleLoader__.load({
             className: "skm-row-btn",
             onClick: onToggle,
             "aria-expanded": open ? "true" : "false",
+            "aria-controls": panelId,
             children: [
               jsx("div", { className: "skm-icon-box", children: jsx(IconSkill, { size: 16 }) }),
               jsxs("div", {
@@ -1248,6 +1381,7 @@ window.__ModuleLoader__.load({
           }),
           jsx("div", {
             className: "skm-collapse",
+            id: panelId,
             "data-open": open ? "true" : "false",
             "aria-hidden": open ? "false" : "true",
             children: jsx("div", {
@@ -1262,17 +1396,18 @@ window.__ModuleLoader__.load({
                         className: "skm-facts-list",
                         children: [
                           jsxs("div", { className: "skm-fact-item", title: skill.file, children: [jsx(IconFolder, { size: 13 }), jsx("span", { children: skill.file })] }),
-                          jsxs("div", { className: "skm-fact-item", children: [t("card.size"), ": ", jsx("span", { children: t("editor.chars", skill.bodyChars) })] }),
+                          jsxs("div", { className: "skm-fact-item", children: [t("card.size"), ": ", jsx("span", { children: t("editor.chars", { n: skill.bodyChars }) })] }),
                           jsxs("div", { className: "skm-fact-item", children: [t("card.updated"), ": ", jsx("span", { children: formatTime(skill.mtimeMs) })] }),
                         ],
                       }),
                       jsxs("div", {
                         className: "skm-facts-actions",
                         children: [
-                          !noFile ? jsx("button", {
+                          !missingFile ? jsx("button", {
                             type: "button",
                             className: "skm-btn skm-btn-secondary skm-btn-sm",
                             onClick: onEdit,
+                            disabled: pending,
                             children: [jsx(IconEdit, { size: 12 }), t("card.edit")],
                           }) : null,
                           jsx("button", {
@@ -1280,6 +1415,7 @@ window.__ModuleLoader__.load({
                             className: "skm-btn skm-btn-ghost skm-btn-sm",
                             style: { color: "var(--dsw-alias-state-error-primary, #e03131)" },
                             onClick: onDelete.onAsk,
+                            disabled: pending,
                             children: [jsx(IconTrash, { size: 12 }), t("card.delete")],
                           }),
                         ],
@@ -1293,7 +1429,7 @@ window.__ModuleLoader__.load({
                         className: "skm-confirm-text",
                         children: [
                           jsx("span", { className: "skm-confirm-title", children: t("card.deleteConfirmTitle") }),
-                          jsx("span", { className: "skm-confirm-msg", children: t("card.deleteConfirmMsg", skill.name) }),
+                          jsx("span", { className: "skm-confirm-msg", children: t("card.deleteConfirmMsg", { name: skill.name }) }),
                         ],
                       }),
                       jsxs("div", {
@@ -1303,12 +1439,14 @@ window.__ModuleLoader__.load({
                             type: "button",
                             className: "skm-btn skm-btn-danger skm-btn-sm",
                             onClick: onDelete.onConfirm,
-                            children: [jsx(IconTrash, { size: 12 }), t("card.confirmDelete")],
+                            disabled: pending,
+                            children: [jsx(IconTrash, { size: 12 }), pending ? t("delete.busy") : t("card.confirmDelete")],
                           }),
                           jsx("button", {
                             type: "button",
                             className: "skm-btn skm-btn-secondary skm-btn-sm",
                             onClick: onDelete.onCancel,
+                            disabled: pending,
                             children: t("card.cancelDelete"),
                           }),
                         ],
@@ -1318,6 +1456,7 @@ window.__ModuleLoader__.load({
                   !skill.valid && skill.problems.length > 0 ? jsxs("div", {
                     className: "skm-banner",
                     "data-tone": "error",
+                    role: "alert",
                     children: [
                       jsx(IconWarning, { size: 16 }),
                       jsx("span", { children: `${t("card.problemsTitle")} ${skill.problems.join("；")}` }),
@@ -1336,7 +1475,7 @@ window.__ModuleLoader__.load({
                       }),
                     ],
                   }) : null,
-                  !noFile ? jsxs("div", {
+                  canTogglePolicy ? jsxs("div", {
                     className: "skm-policy-grid",
                     children: [
                       jsx(Switch, {
@@ -1344,6 +1483,7 @@ window.__ModuleLoader__.load({
                         on: skill.modelInvocable,
                         label: t("card.modelSwitch"),
                         description: t("card.modelSwitchDesc"),
+                        disabled: pending,
                         onToggle: () => onPolicy(skill, { modelInvocable: !skill.modelInvocable }),
                       }),
                       jsx(Switch, {
@@ -1351,10 +1491,14 @@ window.__ModuleLoader__.load({
                         on: skill.userInvocable,
                         label: t("card.userSwitch"),
                         description: t("card.userSwitchDesc"),
+                        disabled: pending,
                         onToggle: () => onPolicy(skill, { userInvocable: !skill.userInvocable }),
                       }),
                     ],
-                  }) : null,
+                  }) : (!missingFile ? jsx("div", {
+                    className: "skm-inline-hint",
+                    children: t("card.policyInvalid"),
+                  }) : null),
                   jsxs("div", {
                     className: "skm-preview-box",
                     children: [
@@ -1362,7 +1506,7 @@ window.__ModuleLoader__.load({
                         className: "skm-preview-head",
                         children: [
                           jsxs("span", { className: "skm-preview-title", children: [jsx(IconSkill, { size: 13 }), t("card.instructions")] }),
-                          !noFile && skill.preview ? jsx("button", {
+                          !missingFile && skill.preview ? jsx("button", {
                             type: "button",
                             className: "skm-btn skm-btn-ghost skm-btn-sm",
                             onClick: handleCopyCode,
@@ -1373,7 +1517,7 @@ window.__ModuleLoader__.load({
                           }) : null,
                         ],
                       }),
-                      noFile ? jsx("div", { className: "skm-preview-empty", children: t("card.noFile") })
+                      missingFile ? jsx("div", { className: "skm-preview-empty", children: t("card.noFile") })
                         : jsx("pre", { className: "skm-preview-pre", children: skill.preview ?? "…" }),
                     ],
                   }),
@@ -1385,7 +1529,7 @@ window.__ModuleLoader__.load({
       });
     }
 
-    function Editor({ initial, onCancel, onSaved }) {
+    function Editor({ initial, onCancel, onSaved, onDirtyChange }) {
       const [name, setName] = useState(initial.name ?? "");
       const [description, setDescription] = useState(initial.description ?? "");
       const [whenToUse, setWhenToUse] = useState(initial.whenToUse ?? "");
@@ -1394,7 +1538,25 @@ window.__ModuleLoader__.load({
       const [userInvocable, setUserInvocable] = useState(initial.userInvocable !== false);
       const [busy, setBusy] = useState(false);
       const [error, setError] = useState(null);
+      const [confirmDiscard, setConfirmDiscard] = useState(false);
       const isCreate = !initial.originalName;
+
+      const dirty = useMemo(() => (
+        name !== (initial.name ?? "")
+        || description !== (initial.description ?? "")
+        || whenToUse !== (initial.whenToUse ?? "")
+        || body !== (initial.body ?? "")
+        || modelInvocable !== (initial.modelInvocable !== false)
+        || userInvocable !== (initial.userInvocable !== false)
+      ), [name, description, whenToUse, body, modelInvocable, userInvocable, initial]);
+
+      useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+
+      const requestCancel = () => {
+        if (busy) return;
+        if (dirty) setConfirmDiscard(true);
+        else onCancel();
+      };
 
       const submit = async (e) => {
         if (e) e.preventDefault();
@@ -1421,19 +1583,24 @@ window.__ModuleLoader__.load({
               modelInvocable,
               userInvocable,
               originalName: initial.originalName,
+              expectedMtimeMs: isCreate ? undefined : initial.mtimeMs,
             }),
           });
           onSaved(trimmedName);
         } catch (err) {
-          setError(err.message);
+          setError(`${t("error.save")}：${err.message}`);
           setBusy(false);
         }
       };
 
       const handleKeyDown = (e) => {
-        if (e.key === "Escape" && e.target.tagName !== "TEXTAREA") {
-          onCancel();
-        } else if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          if (confirmDiscard) setConfirmDiscard(false);
+          else requestCancel();
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
           e.preventDefault();
           submit();
         }
@@ -1453,13 +1620,13 @@ window.__ModuleLoader__.load({
                   jsx("button", {
                     type: "button",
                     className: "skm-btn skm-btn-ghost skm-btn-sm",
-                    onClick: onCancel,
+                    onClick: requestCancel,
                     title: t("editor.cancel"),
                     children: [jsx(IconChevronLeft, { size: 14 }), t("editor.cancel")],
                   }),
                   jsx("h2", {
                     className: "skm-editor-title",
-                    children: isCreate ? t("editor.newTitle") : t("editor.editTitle", initial.originalName),
+                    children: isCreate ? t("editor.newTitle") : t("editor.editTitle", { name: initial.originalName }),
                   }),
                 ],
               }),
@@ -1485,17 +1652,18 @@ window.__ModuleLoader__.load({
               jsxs("div", {
                 className: "skm-field-head",
                 children: [
-                  jsx("label", { className: "skm-field-label", children: t("editor.name") }),
+                  jsx("label", { className: "skm-field-label", htmlFor: "skm-field-name", children: t("editor.name") }),
                   jsx("span", { className: "skm-field-hint", children: t("editor.nameHint") }),
                 ],
               }),
               jsx("input", {
+                id: "skm-field-name",
                 className: "skm-input",
                 value: name,
                 onChange: (e) => { setName(e.target.value); setError(null); },
                 spellCheck: false,
                 autoFocus: isCreate,
-                placeholder: "my-skill",
+                placeholder: t("editor.namePlaceholder"),
               }),
             ],
           }),
@@ -1505,16 +1673,17 @@ window.__ModuleLoader__.load({
               jsxs("div", {
                 className: "skm-field-head",
                 children: [
-                  jsx("label", { className: "skm-field-label", children: t("editor.description") }),
+                  jsx("label", { className: "skm-field-label", htmlFor: "skm-field-description", children: t("editor.description") }),
                   jsx("span", { className: "skm-field-hint", children: t("editor.descriptionHint") }),
                 ],
               }),
               jsx("input", {
+                id: "skm-field-description",
                 className: "skm-input",
                 value: description,
                 onChange: (e) => { setDescription(e.target.value); setError(null); },
                 autoFocus: !isCreate,
-                placeholder: "例如：提供网络搜索与权威信息检索能力",
+                placeholder: t("editor.descriptionPlaceholder"),
               }),
             ],
           }),
@@ -1524,15 +1693,16 @@ window.__ModuleLoader__.load({
               jsxs("div", {
                 className: "skm-field-head",
                 children: [
-                  jsx("label", { className: "skm-field-label", children: t("editor.whenToUse") }),
+                  jsx("label", { className: "skm-field-label", htmlFor: "skm-field-when", children: t("editor.whenToUse") }),
                   jsx("span", { className: "skm-field-hint", children: t("editor.whenToUseHint") }),
                 ],
               }),
               jsx("input", {
+                id: "skm-field-when",
                 className: "skm-input",
                 value: whenToUse,
                 onChange: (e) => setWhenToUse(e.target.value),
-                placeholder: "例如：当用户需要查询实时信息、最新新闻或网络资料时调用",
+                placeholder: t("editor.whenToUsePlaceholder"),
               }),
             ],
           }),
@@ -1544,6 +1714,7 @@ window.__ModuleLoader__.load({
                 on: modelInvocable,
                 label: t("editor.modelSwitch"),
                 description: t("card.modelSwitchDesc"),
+                disabled: busy,
                 onToggle: () => setModelInvocable((v) => !v),
               }),
               jsx(Switch, {
@@ -1551,6 +1722,7 @@ window.__ModuleLoader__.load({
                 on: userInvocable,
                 label: t("editor.userSwitch"),
                 description: t("card.userSwitchDesc"),
+                disabled: busy,
                 onToggle: () => setUserInvocable((v) => !v),
               }),
             ],
@@ -1561,35 +1733,75 @@ window.__ModuleLoader__.load({
               jsxs("div", {
                 className: "skm-field-head",
                 children: [
-                  jsx("label", { className: "skm-field-label", children: t("editor.body") }),
-                  jsx("span", { className: "skm-field-hint", children: t("editor.chars", body.length) }),
+                  jsx("label", { className: "skm-field-label", htmlFor: "skm-field-body", children: t("editor.body") }),
+                  jsx("span", { className: "skm-field-hint", children: t("editor.chars", { n: Array.from(body).length }) }),
                 ],
               }),
               jsx("textarea", {
+                id: "skm-field-body",
                 className: "skm-textarea",
                 value: body,
                 onChange: (e) => setBody(e.target.value),
                 spellCheck: false,
-                placeholder: "# 技能指令与工作流程\n\n在此输入 Markdown 正文...",
+                placeholder: t("editor.bodyPlaceholder"),
               }),
             ],
           }),
+          initial.problems && initial.problems.length > 0 ? jsxs("div", {
+            className: "skm-banner",
+            "data-tone": "warn",
+            role: "status",
+            children: [
+              jsx(IconWarning, { size: 16 }),
+              jsx("span", { children: `${t("editor.problemsBanner")} ${initial.problems.join("；")}` }),
+            ],
+          }) : null,
           error ? jsxs("div", {
             className: "skm-banner",
             "data-tone": "error",
+            role: "alert",
             children: [jsx(IconWarning, { size: 16 }), jsx("span", { children: error })],
           }) : null,
-          jsxs("div", {
+          confirmDiscard ? jsxs("div", {
+            className: "skm-confirm-panel",
+            children: [
+              jsxs("div", {
+                className: "skm-confirm-text",
+                children: [
+                  jsx("span", { className: "skm-confirm-title", children: t("editor.discardTitle") }),
+                  jsx("span", { className: "skm-confirm-msg", children: t("editor.discardMsg") }),
+                ],
+              }),
+              jsxs("div", {
+                className: "skm-confirm-actions",
+                children: [
+                  jsx("button", {
+                    type: "button",
+                    className: "skm-btn skm-btn-danger skm-btn-sm",
+                    onClick: onCancel,
+                    children: t("editor.discardConfirm"),
+                  }),
+                  jsx("button", {
+                    type: "button",
+                    className: "skm-btn skm-btn-secondary skm-btn-sm",
+                    onClick: () => setConfirmDiscard(false),
+                    children: t("editor.discardCancel"),
+                  }),
+                ],
+              }),
+            ],
+          }) : jsxs("div", {
             className: "skm-editor-footer",
             children: [
-              jsx("span", { className: "skm-shortcut-hint", children: t("editor.shortcutHint") }),
+              jsx("span", { className: "skm-shortcut-hint", children: dirty ? `${t("editor.unsaved")} · ${t("editor.shortcutHint")}` : t("editor.shortcutHint") }),
               jsxs("div", {
                 className: "skm-toolbar-actions",
                 children: [
                   jsx("button", {
                     type: "button",
                     className: "skm-btn skm-btn-secondary",
-                    onClick: onCancel,
+                    onClick: requestCancel,
+                    disabled: busy,
                     children: t("editor.cancel"),
                   }),
                   jsx("button", {
@@ -1615,8 +1827,22 @@ window.__ModuleLoader__.load({
       const [openName, setOpenName] = useState(null);
       const [confirmName, setConfirmName] = useState(null);
       const [editor, setEditor] = useState(null);
+      const [editorDirty, setEditorDirty] = useState(false);
       const [copiedPath, setCopiedPath] = useState(false);
+      const [pendingName, setPendingName] = useState(null);
+      const [notice, setNotice] = useState(null);
       const reqSeq = useRef(0);
+      const noticeTimer = useRef(null);
+
+      useEffect(() => () => {
+        if (noticeTimer.current) clearTimeout(noticeTimer.current);
+      }, []);
+
+      const showNotice = (text) => {
+        setNotice(text);
+        if (noticeTimer.current) clearTimeout(noticeTimer.current);
+        noticeTimer.current = setTimeout(() => setNotice(null), 2800);
+      };
 
       const load = async () => {
         const seq = ++reqSeq.current;
@@ -1624,10 +1850,16 @@ window.__ModuleLoader__.load({
         try {
           const payload = await api("/list");
           if (seq !== reqSeq.current) return;
-          setState({ loading: false, root: payload.root, rootExists: payload.rootExists, skills: payload.skills });
+          setState({
+            loading: false,
+            root: payload.root,
+            rootExists: payload.rootExists,
+            skills: payload.skills,
+            provider: payload.provider,
+          });
         } catch (e) {
           if (seq !== reqSeq.current) return;
-          setState((prev) => ({ ...prev, loading: false, error: e.message }));
+          setState((prev) => ({ ...prev, loading: false, error: `${t("error.load")}：${e.message}` }));
         }
       };
 
@@ -1659,12 +1891,12 @@ window.__ModuleLoader__.load({
         }
         setOpenName(skill.name);
         setConfirmName(null);
-        if (!skill.valid && skill.problems.some((p) => p.includes("SKILL.md"))) return;
+        if (skill.missingFile) return;
         try {
           const payload = await api(`/get?name=${encodeURIComponent(skill.name)}`);
           setState((prev) => ({
             ...prev,
-            skills: (prev.skills ?? []).map((s) => (s.name === skill.name ? { ...s, preview: payload.skill.body } : s)),
+            skills: (prev.skills ?? []).map((s) => (s.file === skill.file ? { ...s, preview: payload.skill.body } : s)),
           }));
         } catch {
           /* preview stays blank on failure; summary remains visible */
@@ -1672,6 +1904,8 @@ window.__ModuleLoader__.load({
       };
 
       const startEdit = async (skill) => {
+        if (editorDirty && !window.confirm(t("editor.discardMsg"))) return;
+        setPendingName(skill.name);
         try {
           const payload = await api(`/get?name=${encodeURIComponent(skill.name)}`);
           setEditor({
@@ -1682,43 +1916,84 @@ window.__ModuleLoader__.load({
             body: payload.skill.body,
             modelInvocable: payload.skill.modelInvocable,
             userInvocable: payload.skill.userInvocable,
+            problems: payload.skill.problems,
+            mtimeMs: payload.skill.mtimeMs,
           });
+          setEditorDirty(false);
         } catch (e) {
           setState((prev) => ({ ...prev, error: `${t("error.load")}：${e.message}` }));
+        } finally {
+          setPendingName(null);
         }
       };
 
+      const startCreate = () => {
+        if (editorDirty && !window.confirm(t("editor.discardMsg"))) return;
+        setEditor({ originalName: null });
+        setEditorDirty(false);
+      };
+
       const applyPolicy = async (skill, patch) => {
+        if (!skill.valid || pendingName) return;
+        setPendingName(skill.name);
         // Optimistic UI update to eliminate toggle lag
         setState((prev) => ({
           ...prev,
-          skills: (prev.skills ?? []).map((s) => (s.name === skill.name ? { ...s, ...patch } : s)),
+          skills: (prev.skills ?? []).map((s) => (s.file === skill.file ? { ...s, ...patch } : s)),
         }));
         try {
-          await api("/policy", { method: "POST", body: JSON.stringify({ name: skill.name, ...patch }) });
+          await api("/policy", {
+            method: "POST",
+            body: JSON.stringify({ name: skill.name, expectedMtimeMs: skill.mtimeMs, ...patch }),
+          });
           await load();
         } catch (e) {
-          setState((prev) => ({ ...prev, error: `${t("error.policy")}：${e.message}` }));
           await load();
+          setState((prev) => ({ ...prev, error: `${t("error.policy")}：${e.message}` }));
+        } finally {
+          setPendingName(null);
         }
       };
 
       const doDelete = async (skill) => {
+        if (pendingName) return;
+        setPendingName(skill.name);
         try {
           await api("/delete", { method: "POST", body: JSON.stringify({ name: skill.name }) });
           setConfirmName(null);
           if (openName === skill.name) setOpenName(null);
           await load();
+          showNotice(t("notice.deleted"));
         } catch (e) {
           setState((prev) => ({ ...prev, error: `${t("error.delete")}：${e.message}` }));
+        } finally {
+          setPendingName(null);
         }
       };
 
       const afterSave = async (savedName) => {
         setEditor(null);
+        setEditorDirty(false);
         setOpenName(savedName);
+        showNotice(t("notice.saved"));
         await load();
+        try {
+          const payload = await api(`/get?name=${encodeURIComponent(savedName)}`);
+          setState((prev) => ({
+            ...prev,
+            skills: (prev.skills ?? []).map((s) => (s.name === savedName ? { ...s, preview: payload.skill.body } : s)),
+          }));
+        } catch {
+          /* preview can stay empty */
+        }
       };
+
+      const handleEditorCancel = () => {
+        setEditor(null);
+        setEditorDirty(false);
+      };
+
+      const providerWarning = state.provider && state.provider.state !== "ready" ? state.provider : null;
 
       return jsxs("div", {
         className: "skm-page",
@@ -1737,7 +2012,7 @@ window.__ModuleLoader__.load({
               state.root ? jsxs("button", {
                 type: "button",
                 className: "skm-path-chip",
-                title: t("toolbar.rootTitle", state.root),
+                title: t("toolbar.rootTitle", { root: state.root }),
                 onClick: handleCopyRootPath,
                 children: [
                   copiedPath ? jsx(IconCheck, { size: 12 }) : jsx(IconFolder, { size: 13 }),
@@ -1758,6 +2033,7 @@ window.__ModuleLoader__.load({
                     value: query,
                     onChange: (e) => setQuery(e.target.value),
                     placeholder: t("toolbar.search"),
+                    "aria-label": t("search.label"),
                   }),
                   query ? jsx("button", {
                     type: "button",
@@ -1786,7 +2062,7 @@ window.__ModuleLoader__.load({
                   jsx("button", {
                     type: "button",
                     className: "skm-btn skm-btn-primary",
-                    onClick: () => setEditor({ originalName: null }),
+                    onClick: startCreate,
                     children: [jsx(IconPlus, { size: 14 }), t("toolbar.new")],
                   }),
                 ],
@@ -1797,16 +2073,33 @@ window.__ModuleLoader__.load({
             className: "skm-meta-line",
             children: jsx("span", {
               children: query
-                ? t("toolbar.filterCount", filtered.length, skills.length)
-                : t("toolbar.count", skills.length),
+                ? t("toolbar.filterCount", { filtered: filtered.length, total: skills.length })
+                : t("toolbar.count", { n: skills.length }),
             }),
+          }) : null,
+          providerWarning ? jsxs("div", {
+            className: "skm-banner",
+            "data-tone": "warn",
+            role: "status",
+            children: [
+              jsx(IconWarning, { size: 16 }),
+              jsxs("span", {
+                children: [
+                  jsx("strong", { children: t("provider.title") }),
+                  " ",
+                  t("provider.desc", { state: providerWarning.state, attempts: providerWarning.attempts }),
+                ],
+              }),
+            ],
           }) : null,
           state.error ? jsxs("div", {
             className: "skm-banner",
             "data-tone": "error",
+            role: "alert",
+            "aria-live": "assertive",
             children: [
               jsx(IconWarning, { size: 16 }),
-              jsx("span", { children: `${t("error.load")}：${state.error}` }),
+              jsx("span", { children: state.error }),
               jsx("button", {
                 type: "button",
                 className: "skm-btn skm-btn-secondary skm-btn-sm",
@@ -1815,14 +2108,26 @@ window.__ModuleLoader__.load({
               }),
             ],
           }) : null,
-          editor ? jsx(Editor, { initial: editor, onCancel: () => setEditor(null), onSaved: afterSave }) : jsxs("div", {
+          notice ? jsxs("div", {
+            className: "skm-banner",
+            "data-tone": "success",
+            role: "status",
+            "aria-live": "polite",
+            children: [jsx(IconCheck, { size: 16 }), jsx("span", { children: notice })],
+          }) : null,
+          editor ? jsx(Editor, {
+            initial: editor,
+            onCancel: handleEditorCancel,
+            onSaved: afterSave,
+            onDirtyChange: setEditorDirty,
+          }) : jsxs("div", {
             className: "skm-list",
             children: [
               state.loading && skills.length === 0 ? jsxs("div", {
                 className: "skm-banner",
                 children: [
                   jsx(IconRefresh, { size: 14, className: "skm-icon-spin" }),
-                  jsx("span", { children: "正在加载技能列表…" }),
+                  jsx("span", { children: t("loading") }),
                 ],
               }) : null,
               !state.loading && state.rootExists === false ? jsxs("div", {
@@ -1834,7 +2139,7 @@ window.__ModuleLoader__.load({
                   jsx("button", {
                     type: "button",
                     className: "skm-btn skm-btn-primary",
-                    onClick: () => setEditor({ originalName: null }),
+                    onClick: startCreate,
                     children: [jsx(IconPlus, { size: 14 }), t("toolbar.new")],
                   }),
                 ],
@@ -1848,7 +2153,7 @@ window.__ModuleLoader__.load({
                   jsx("button", {
                     type: "button",
                     className: "skm-btn skm-btn-primary",
-                    onClick: () => setEditor({ originalName: null }),
+                    onClick: startCreate,
                     children: [jsx(IconPlus, { size: 14 }), t("toolbar.new")],
                   }),
                 ],
@@ -1870,6 +2175,8 @@ window.__ModuleLoader__.load({
               filtered.map((skill) => jsx(SkillCard, {
                 skill,
                 open: openName === skill.name,
+                pending: pendingName === skill.name,
+                panelId: `skm-panel-${skill.file.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
                 onToggle: () => expand(skill),
                 onEdit: () => startEdit(skill),
                 onPolicy: applyPolicy,
@@ -1879,7 +2186,7 @@ window.__ModuleLoader__.load({
                   onConfirm: () => doDelete(skill),
                   onCancel: () => setConfirmName(null),
                 },
-              }, skill.name)),
+              }, skill.file)),
             ],
           }),
         ],
@@ -1887,10 +2194,14 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ["slots"],
+      inject: ["slots", "locale"],
       apply(ctx) {
+        if (ctx.locale && typeof ctx.locale.register === "function" && typeof ctx.locale.bind === "function") {
+          ctx.effect(() => ctx.locale.register(NS, { zh: DICTS.zh, en: DICTS.en }), "skills-manager: locale dictionaries");
+          t = ctx.locale.bind(NS);
+        }
         ctx.slots.inject("settings.section", () => ctx.slots.register(
-          { name: "settings.section", id: "skills", order: 15, label: t("nav") },
+          { name: "settings.section", id: "skills", order: 16, label: () => t("nav") },
           SkillsSection,
         ));
       },
