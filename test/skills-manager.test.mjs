@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { apply, __test } from '../index.js';
 
-const { splitFrontmatter, serializeFrontmatter, buildFileContent, readKeyValue, describeEntry, scanRoot } = __test;
+const { splitFrontmatter, serializeFrontmatter, buildFileContent, readKeyValue, describeEntry, scanRoot, explorerTarget } = __test;
 
 const YAML_URL = 'file:///D:/dsh%20work/_dsh_src/dsh/node_modules/yaml/dist/index.js';
 let YAML;
@@ -374,6 +374,81 @@ test('API delete moves the skill into .trash', async (t) => {
   assert.equal(response.status, 200);
   assert.deepEqual(readdirSync(skills).filter((item) => !item.startsWith('.')), []);
   assert.equal(readdirSync(join(skills, '.trash')).length, 1);
+});
+
+/* ------------------------ open in file manager ------------------------ */
+
+test('API open launches the file manager for the root and one skill folder', async (t) => {
+  const { skills, ctx } = await setupApi(t);
+  writeBundle(skills, 'demo', '---\nname: demo\ndescription: demo skill\n---\nbody\n');
+  const opened = [];
+  __test.setOpener((target) => { opened.push(target); });
+  t.after(() => __test.setOpener(null));
+
+  const rootOpen = await call(ctx, { method: 'POST', path: '/open', headers: postHeaders(), body: '{}' });
+  assert.equal(rootOpen.status, 200);
+  assert.equal(rootOpen.json.path, skills);
+  assert.deepEqual(opened, [skills]);
+
+  const skillOpen = await call(ctx, {
+    method: 'POST',
+    path: '/open',
+    headers: postHeaders(),
+    body: JSON.stringify({ name: 'demo' }),
+  });
+  assert.equal(skillOpen.status, 200);
+  assert.equal(skillOpen.json.path, join(skills, 'demo'));
+  assert.deepEqual(opened, [skills, join(skills, 'demo')]);
+});
+
+test('API open creates a missing skills directory and refuses unsafe requests', async (t) => {
+  const { skills, ctx } = await setupApi(t);
+  rmSync(skills, { recursive: true, force: true });
+  const opened = [];
+  __test.setOpener((target) => { opened.push(target); });
+  t.after(() => __test.setOpener(null));
+
+  const created = await call(ctx, { method: 'POST', path: '/open', headers: postHeaders(), body: '{}' });
+  assert.equal(created.status, 200);
+  assert.equal(existsSync(skills), true);
+  assert.deepEqual(opened, [skills]);
+
+  const missing = await call(ctx, {
+    method: 'POST',
+    path: '/open',
+    headers: postHeaders(),
+    body: JSON.stringify({ name: 'nope' }),
+  });
+  assert.equal(missing.status, 404);
+
+  const traversal = await call(ctx, {
+    method: 'POST',
+    path: '/open',
+    headers: postHeaders(),
+    body: JSON.stringify({ name: '../evil' }),
+  });
+  assert.equal(traversal.status, 400);
+
+  const plain = await call(ctx, {
+    method: 'POST',
+    path: '/open',
+    headers: hostHeaders({ 'content-type': 'text/plain' }),
+    body: '{}',
+  });
+  assert.equal(plain.status, 415);
+
+  const crossSite = await call(ctx, {
+    method: 'POST',
+    path: '/open',
+    headers: postHeaders({ origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' }),
+    body: '{}',
+  });
+  assert.equal(crossSite.status, 403);
+});
+
+test('explorerTarget keeps unicode paths and escapes commas and equals signs', () => {
+  assert.equal(explorerTarget('C:\\Users\\me\\a,b=c'), 'file:///C:/Users/me/a%2Cb%3Dc');
+  assert.equal(explorerTarget('C:\\Users\\张三'), 'file:///C:/Users/张三');
 });
 
 test('API save refuses path traversal and invalid names', async (t) => {

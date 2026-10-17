@@ -1,6 +1,6 @@
 {
   "name": "@local/skills-manager",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Manage local DSH skills in a Settings page: list, inspect, create, edit, delete, and toggle model/user invocation.",
   "license": "MIT",

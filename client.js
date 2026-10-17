@@ -23,6 +23,8 @@ window.__ModuleLoader__.load({
         "toolbar.rootTitle": "技能存储目录：{root}",
         "toolbar.copyPath": "复制目录路径",
         "toolbar.copiedPath": "路径已复制",
+        "toolbar.openDir": "打开目录",
+        "toolbar.openDirTitle": "在文件管理器中打开技能安装目录",
         "loading": "正在加载技能列表…",
         "search.label": "搜索技能",
         "notice.saved": "已保存",
@@ -41,6 +43,7 @@ window.__ModuleLoader__.load({
         "error.save": "保存技能失败",
         "error.delete": "删除技能失败",
         "error.policy": "更新调用策略失败",
+        "error.openDir": "打开目录失败",
         "error.retry": "重试",
         "row.invalid": "配置异常",
         "row.bundle": "目录型",
@@ -60,6 +63,7 @@ window.__ModuleLoader__.load({
         "card.userSwitch": "用户手动调用",
         "card.userSwitchDesc": "允许用户在对话框或工具面板中显式指定调用此技能",
         "card.edit": "编辑技能",
+        "card.openDir": "打开目录",
         "card.delete": "删除",
         "card.deleteConfirmTitle": "确定删除此技能？",
         "card.deleteConfirmMsg": "技能“{name}”及其所有本地文件将被永久删除，此操作不可撤销。",
@@ -115,6 +119,8 @@ window.__ModuleLoader__.load({
         "toolbar.rootTitle": "Skills directory: {root}",
         "toolbar.copyPath": "Copy path",
         "toolbar.copiedPath": "Path copied",
+        "toolbar.openDir": "Open folder",
+        "toolbar.openDirTitle": "Open the skills directory in the file manager",
         "loading": "Loading skills…",
         "search.label": "Search skills",
         "notice.saved": "Saved",
@@ -133,6 +139,7 @@ window.__ModuleLoader__.load({
         "error.save": "Failed to save skill",
         "error.delete": "Failed to delete skill",
         "error.policy": "Failed to update invocation policy",
+        "error.openDir": "Could not open the folder",
         "error.retry": "Retry",
         "row.invalid": "Invalid config",
         "row.bundle": "Bundle",
@@ -152,6 +159,7 @@ window.__ModuleLoader__.load({
         "card.userSwitch": "User Invocation",
         "card.userSwitchDesc": "Allow users to invoke this skill explicitly via chat or command palette",
         "card.edit": "Edit",
+        "card.openDir": "Open folder",
         "card.delete": "Delete",
         "card.deleteConfirmTitle": "Delete this skill?",
         "card.deleteConfirmMsg": "Skill “{name}” and all its local files will be permanently deleted.",
@@ -1311,7 +1319,7 @@ window.__ModuleLoader__.load({
       });
     }
 
-    function SkillCard({ skill, open, onToggle, onEdit, onPolicy, onDelete, pending, panelId }) {
+    function SkillCard({ skill, open, onToggle, onEdit, onOpenDir, onPolicy, onDelete, pending, panelId }) {
       const [copied, setCopied] = useState(false);
       const missingFile = Boolean(skill.missingFile);
       const canTogglePolicy = !missingFile && skill.valid;
@@ -1403,6 +1411,14 @@ window.__ModuleLoader__.load({
                       jsxs("div", {
                         className: "skm-facts-actions",
                         children: [
+                          jsx("button", {
+                            type: "button",
+                            className: "skm-btn skm-btn-ghost skm-btn-sm",
+                            onClick: onOpenDir,
+                            disabled: pending,
+                            title: t("card.openDir"),
+                            children: [jsx(IconFolder, { size: 12 }), t("card.openDir")],
+                          }),
                           !missingFile ? jsx("button", {
                             type: "button",
                             className: "skm-btn skm-btn-secondary skm-btn-sm",
@@ -1883,6 +1899,17 @@ window.__ModuleLoader__.load({
         setTimeout(() => setCopiedPath(false), 2000);
       };
 
+      const openDir = async (skill) => {
+        try {
+          await api("/open", {
+            method: "POST",
+            body: JSON.stringify(skill ? { name: skill.name } : {}),
+          });
+        } catch (e) {
+          setState((prev) => ({ ...prev, error: `${t("error.openDir")}：${e.message}` }));
+        }
+      };
+
       const expand = async (skill) => {
         if (openName === skill.name) {
           setOpenName(null);
@@ -2050,6 +2077,13 @@ window.__ModuleLoader__.load({
                   jsx("button", {
                     type: "button",
                     className: "skm-btn skm-btn-secondary",
+                    onClick: () => openDir(null),
+                    title: t("toolbar.openDirTitle"),
+                    children: [jsx(IconFolder, { size: 13 }), t("toolbar.openDir")],
+                  }),
+                  jsx("button", {
+                    type: "button",
+                    className: "skm-btn skm-btn-secondary",
                     onClick: load,
                     disabled: state.loading,
                     "aria-busy": state.loading ? "true" : "false",
@@ -2179,6 +2213,7 @@ window.__ModuleLoader__.load({
                 panelId: `skm-panel-${skill.file.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
                 onToggle: () => expand(skill),
                 onEdit: () => startEdit(skill),
+                onOpenDir: () => openDir(skill),
                 onPolicy: applyPolicy,
                 onDelete: {
                   confirm: confirmName === skill.name,

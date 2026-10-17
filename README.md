@@ -37,6 +37,8 @@ Host half (`index.js`) exposes a small JSON API on the plugin web server:
   keys; accepts `expectedMtimeMs` for optimistic concurrency)
 - `POST /skills-manager/api/policy` — toggle `disable-model-invocation` /
   `user-invocable`
+- `POST /skills-manager/api/open` — open the skills root, or one skill's folder
+  via `{"name":"…"}`, in the OS file manager
 - `POST /skills-manager/api/delete` — move a skill (bundle dir or flat file) to
   `<root>/.trash/`; nothing is hard-deleted
 
@@ -44,7 +46,10 @@ Client half (`client.js`) registers a `settings.section` entry styled after the
 built-in skill tool card: skill rows with hover chevron, expandable instructions
 card, invocation-policy switches, and a create/edit form with client + server
 validation (kebab-case names, required description), unsaved-changes guards,
-busy states, and `zh`/`en` dictionaries registered through `ctx.locale`.
+busy states, and `zh`/`en` dictionaries registered through `ctx.locale`. A
+toolbar button opens the skills directory, and each expanded skill row has an
+**Open folder** action that reveals its bundle directory (flat skills open the
+root they live in).
 
 ## Safety notes
 
@@ -63,3 +68,7 @@ busy states, and `zh`/`en` dictionaries registered through `ctx.locale`.
 - Symbolic links / junctions inside the skills directory are followed, matching
   the official provider; dot-prefixed entries (`.backups`, `.trash`, `.system`)
   are ignored by the manager.
+- Opening a folder is a POST-only action behind the same trust fence. The target
+  is resolved from the scanned catalog and confined to the skills root; the host
+  spawns the platform file manager (`explorer.exe`, `open`, `xdg-open`) with an
+  argv array, so no path is ever interpolated into a shell command.

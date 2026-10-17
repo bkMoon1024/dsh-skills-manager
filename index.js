@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import {
   copyFileSync,
   existsSync,
@@ -8,8 +9,9 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 
 export const name = '@local/skills-manager';
 
@@ -587,6 +589,80 @@ function readJsonBody(req) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Opening the skills directory in the OS file manager
+ * ------------------------------------------------------------------ */
+
+/**
+ * Explorer splits its command line on commas and equals signs, and it wants a
+ * file URL rather than a native path. Keep ASCII escapes intact and decode the
+ * UTF-8 runs so non-ASCII home directories open correctly.
+ */
+function explorerTarget(path) {
+  return pathToFileURL(path, { windows: true }).href
+    .replace(/(?:%[89A-F][0-9A-F])+/gi, (run) => decodeURIComponent(run))
+    .replaceAll(',', '%2C')
+    .replaceAll('=', '%3D');
+}
+
+function spawnDetached(command, args) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    let child;
+    try {
+      child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: false });
+    } catch (error) {
+      rejectPromise(error);
+      return;
+    }
+    child.once('error', rejectPromise);
+    child.once('spawn', () => {
+      child.removeListener('error', rejectPromise);
+      child.unref();
+      resolvePromise();
+    });
+  });
+}
+
+function openDirectoryDefault(target) {
+  if (process.platform === 'win32') return spawnDetached('explorer.exe', [explorerTarget(target)]);
+  if (process.platform === 'darwin') return spawnDetached('open', [target]);
+  if (process.platform === 'linux') return spawnDetached('xdg-open', [target]);
+  throw httpError(501, `当前平台不支持打开目录：${process.platform}`);
+}
+
+/** Replaced by the test suite so tests never launch a real file manager. */
+let openDirectoryImpl = openDirectoryDefault;
+
+async function openDirectory(target) {
+  try {
+    await openDirectoryImpl(target);
+  } catch (error) {
+    if (error?.statusCode) throw error;
+    throw httpError(500, `无法打开目录：${error?.message ?? String(error)}`);
+  }
+}
+
+function resolveOpenTarget(root, name) {
+  if (typeof name !== 'string' || name === '') return { target: root, skill: undefined };
+  assertEntryKey(name);
+  const entry = scanRoot(root).find((item) => item.name === name);
+  if (!entry) throw httpError(404, `找不到技能 ${name}`);
+  const target = entry.kind === 'bundle' ? dirname(join(root, entry.file)) : root;
+  const resolvedRoot = resolve(root);
+  const resolvedTarget = resolve(target);
+  if (resolvedTarget !== resolvedRoot && !resolvedTarget.startsWith(resolvedRoot + sep)) {
+    throw httpError(400, '拒绝打开技能目录之外的路径');
+  }
+  return { target: resolvedTarget, skill: entry };
+}
+
+async function openHandler(root, args) {
+  if (!existsSync(root)) mkdirSync(root, { recursive: true });
+  const { target, skill } = resolveOpenTarget(root, args.name);
+  await openDirectory(target);
+  return { ok: true, path: target, kind: skill ? skill.kind : 'root' };
+}
+
+/* ------------------------------------------------------------------ *
  * Routes
  * ------------------------------------------------------------------ */
 
@@ -763,6 +839,10 @@ export function apply(ctx) {
           send(res, 200, policyHandler(root, await readJsonBody(req)));
           return;
         }
+        if (req.method === 'POST' && route === '/open') {
+          send(res, 200, await openHandler(root, await readJsonBody(req)));
+          return;
+        }
         if (req.method === 'POST' && route === '/delete') {
           send(res, 200, deleteHandler(root, await readJsonBody(req)));
           return;
@@ -784,4 +864,9 @@ export const __test = {
   parseStrictBool,
   describeEntry,
   scanRoot,
+  explorerTarget,
+  resolveOpenTarget,
+  setOpener(fn) {
+    openDirectoryImpl = typeof fn === 'function' ? fn : openDirectoryDefault;
+  },
 };
