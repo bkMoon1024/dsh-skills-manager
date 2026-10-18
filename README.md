@@ -91,6 +91,19 @@ node --test "test/*.test.mjs"
 - 未知 frontmatter 键、注释与块标量值在保存时原样保留；旧版键（`disableModelInvocation`、`modelInvocable`、`userInvocable`）会作为问题报告，而不是被静默改写。
 - 打开目录是 POST-only 动作，同样在信任围栏之后；目标从扫描结果解析并限制在技能根目录内，宿主以 argv 数组直接 spawn 平台文件管理器（`explorer.exe` / `open` / `xdg-open`），不经过 shell 拼接。
 
+## 📝 更新日志
+
+### v0.3.1（2026-10-18）
+
+深色模式视觉修复。设置页在 DSH 深色主题下按钮与开关失形、强调色不可读，根因是几个令牌语义用错、还有几个令牌在 DSH 里根本不存在。
+
+- **主按钮前景与底色**：`.skm-btn-primary` 原用 `--dsw-alias-brand-primary` 配 `color:#ffffff`。该令牌是宿主单色主按钮的底色（深色下为近白 `#f9fafb`），于是变成白底白字。改用宿主自己的配对 `--dsw-alias-button-primary-fill` + `--dsw-alias-label-primary-foreground`；hover 由 `filter: brightness(1.06)` 改为 `--dsw-alias-button-primary-hover`。
+- **危险按钮**：`.skm-btn-danger` 文字改 `--dsw-alias-label-primary-foreground`；hover 由 `filter: brightness(1.08)` 改为按主题色混合，深色下不再糊成一团。
+- **强调色**：13 处 `--dsw-alias-brand-primary` 统一改为 `--dsw-alias-link`（浅色 `#4176e6` / 深色 `#7aaaff`）。
+- **失效令牌**：4 处 `--dsh-code-font-family` 改为 `--ds-font-family-code`；3 处 `--dsw-alias-state-warning-primary`（少个 `ing`）改为 `--dsw-alias-state-warn-primary`。
+- **开关**：按宿主 `._switch_1ik0f_5` / `._thumb_1ik0f_33` 的令牌配对重写。此前选中态的旋钮与轨道在深色下对比度仅约 2:1；现在未选中轨道用 `--dsw-alias-border-l3`、旋钮用 `--dsw-alias-switch-thumb`，选中轨道用 `--dsw-alias-button-primary-fill`、旋钮单独覆盖为 `--dsw-alias-label-primary-foreground`，并合并了原先重复的两条选中态选择器。
+- **阴影**：卡片展开与编辑器面板的硬编码 `rgba(0,0,0,…)` 阴影改为 `--dsw-shadow-lv2`。
+
 ## 📄 License
 
 [MIT](./LICENSE)
