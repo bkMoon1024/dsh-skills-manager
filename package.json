@@ -2,7 +2,7 @@
   "name": "@local/skills-manager",
   "version": "0.3.1",
   "type": "module",
-  "description": "Manage local DSH skills in a Settings page: list, inspect, create, edit, delete, and toggle model/user invocation.",
+  "description": "Visual Skills Manager for DeepSeek Harness: Inspect, create, edit local skills, and configure model/user invocation policies in Settings.",
   "license": "MIT",
   "engines": {
     "node": ">=22"
@@ -28,7 +28,11 @@
     "index.js",
     "client.js",
     "locale",
-    "icon.svg"
+    "icon.svg",
+    "assets/**",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
   ],
   "dsh": {
     "bundle": {
