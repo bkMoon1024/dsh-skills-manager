@@ -93,6 +93,8 @@ dsh plugin --profile web add github:daha1216/dsh-skills-manager
 > 💡 **Important**: After installing or updating, **completely quit and restart DSH Desktop** (or restart the `dsh` process and refresh your browser). The host process does not hot-reload newly injected profile bundles while running.
 >
 > To update in the future, simply re-run the same `add` command.
+>
+> **Compatibility**: `engines.dsh` declares `^0.2.0-rc.1`, i.e. **DSH 0.2.0-rc.1 up to (but not including) 0.3.0**. On an unsupported runtime the plugin manager refuses with `incompatible-version`; add a one-off exemption with `dsh plugin allow-version` if you really need to try it elsewhere. Once DSH reaches 0.3.x this plugin needs a new release to widen the range.
 
 ### Method 2: Local Development Link
 
