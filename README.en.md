@@ -181,6 +181,14 @@ Covers 21 unit tests, including frontmatter round-trip fidelity, trust fence enf
 
 ---
 
+## 🙏 Contributors
+
+Thanks to everyone who contributed code and improvements to this project:
+
+- [@lanslot4n93r](https://github.com/lanslot4n93r) — dark-mode primary button color fix (`label-primary-inverted`), and packaging `cordis.patch.yml` so GitHub installs no longer miss the overlay.
+
+---
+
 ## 📄 License
 
 Distributed under the [MIT License](./LICENSE).

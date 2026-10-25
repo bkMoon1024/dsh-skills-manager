@@ -187,6 +187,14 @@ node --test "test/*.test.mjs"
 
 ---
 
+## 🙏 贡献者
+
+感谢为项目提交代码与改进建议的贡献者：
+
+- [@lanslot4n93r](https://github.com/lanslot4n93r) — 深色模式主按钮配色修复（改用 `label-primary-inverted`），以及打包时带上 `cordis.patch.yml`，GitHub 远程安装不再缺 overlay。
+
+---
+
 ## 📄 开源协议
 
 本项目采用 [MIT License](./LICENSE) 协议开源。
