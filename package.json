@@ -1,6 +1,6 @@
 {
   "name": "@local/skills-manager",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "type": "module",
   "description": "Visual Skills Manager for DeepSeek Harness: Inspect, create, edit local skills, and configure model/user invocation policies in Settings.",
   "license": "MIT",

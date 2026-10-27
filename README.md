@@ -7,7 +7,7 @@
 [![Release](https://img.shields.io/github/v/release/daha1216/dsh-skills-manager?color=4d6bfe.svg?style=flat-square)](https://github.com/daha1216/dsh-skills-manager/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](./LICENSE)
 [![DSH plugin](https://img.shields.io/badge/DSH-plugin-4A90D9.svg?style=flat-square)](https://github.com/topics/dsh-plugin)
-[![Tests Passing](https://img.shields.io/badge/tests-21%20passed-brightgreen.svg?style=flat-square)](https://github.com/daha1216/dsh-skills-manager)
+[![Tests Passing](https://img.shields.io/badge/tests-43%20passed-brightgreen.svg?style=flat-square)](https://github.com/daha1216/dsh-skills-manager)
 
 **中文** · [English](./README.en.md)
 
@@ -41,7 +41,8 @@
 ## ✨ 核心特性
 
 ### 1. 🔍 一站式技能概览与即时检索
-- **自动全量扫描**：智能识别技能根目录（默认为 `~/.dsh/skills`，支持 `$DSH_HOME` 自定义与符号链接跟随）。
+- **双全局目录扫描**：同时扫描 DSH 与 Agents 两套全局技能目录（`~/.dsh/skills` 与 `~/.agents/skills`，分别支持 `$DSH_HOME` / `$DSH_AGENTS_HOME` 自定义，跟随官方 provider 的符号链接语义）。
+- **目录切换器**：两个根目录分别展示与新建；顶部可一键切换，编辑、删除与策略切换始终携带根目录标识，不会串目录。
 - **多形态支持**：完整支持 `<name>/SKILL.md`（Bundle 目录型）与 `<name>.md`（Flat 单文件型）两种主流布局。
 - **信息一目了然**：直观展示技能描述、有效性状态、指令字数统计（Tokens 预估参考）与最近修改时间。
 - **实时模糊过滤**：搜索框支持按**技能名称**、**描述内容**或**触发场景（whenToUse）**即时搜索过滤。
@@ -53,19 +54,27 @@
 - **无损写入机制**：修改策略仅更新目标字段，**原 YAML 中的未知元数据字段、自定义注释、CRLF 换行与块标量结构 100% 原样保留**。
 
 ### 3. 📝 在线指令预览、一键复制与快捷编辑
-- **Markdown 正文预览**：展开卡片即可阅读格式化渲染后的 `SKILL.md` 正文，顶部提供「复制指令」按钮，方便随时提取参考。
+- **正文源码预览**：展开卡片即可用等宽字体阅读 `SKILL.md` 正文原文（保留换行），顶部提供「复制指令」按钮，方便随时提取参考。
 - **内置轻量编辑器**：支持在线直接编辑技能 Frontmatter 与正文；快捷键支持 `Ctrl/Cmd + S` 快速保存、`Esc` 退出。
-- **防丢保护机制**：包含修改冲突检测（乐观并发并发锁）与未保存直接离开时的防误触确认。
+- **防丢保护机制**：包含修改冲突检测（乐观并发锁）与未保存直接离开时的防误触确认；刷新标签页或关闭窗口时同样会弹出浏览器确认。
+- **异常文件修复**：BOM 开头、缺少 frontmatter 或含重复键的 `SKILL.md` 会被标记为“需要修复”；编辑保存时保留正文原文、重建合法 frontmatter，不再清空内容。
 
 ### 4. 📁 本地文件系统无缝联动
 - **一键定位根目录**：工具栏提供「打开目录」按钮，一键调出系统的文件资源管理器（Windows Explorer / macOS Finder / Linux xdg-open）。
 - **单技能直达**：卡片内配备「打开目录」，直接定位到该技能的 Bundle 文件夹，方便管理附加的脚本、模板与依赖资源。
-- **快速打开全局配置**：页面右上角提供一键「打开配置文件」入口。
+- **复制目录路径**：页面右上角显示当前技能根目录，点击即可复制完整路径。
 
 ### 5. 🛡️ 生产级安全防护体系
-- **安全软删除（防误删）**：删除技能时，系统会将其安全移至 `<root>/.trash/` 回收站目录，绝不直接物理销毁，随时可撤销找回。
+- **安全软删除（防误删）**：删除技能时，系统会将其安全移至 `<root>/.trash/` 回收站目录，绝不直接物理销毁，可在文件管理器中手动找回。
 - **写前快照备份**：每次保存新版本前，自动在 `<root>/.backups/` 中创建带时间戳的完整历史快照副本。
 - **严格信任围栏**：API 仅允许本地 Loopback 或受信主机调用，强制同源检查与 JSON 请求体限制，杜绝跨源攻击（CSRF）与非法路径穿越。
+- **同名技能精确寻址**：接口以技能文件相对路径定位目标；两个技能声明同名时，编辑、删除与策略切换只作用于用户点开的那一个文件。
+- **名称与冲突防护**：拒绝 Windows 保留名（`con`、`nul`、`com1`…）与超过 64 字符的名称；仅大小写不同的目录不会被复用，避免覆盖已有技能。
+- **历史目录有界**：`.backups` 只保留最近 200 份快照、`.trash` 只保留最近 100 份，长期使用不会无限膨胀。
+- **留存边界**：`.backups` 与 `.trash` 是磁盘上的明文副本，历史版本中被删除的敏感内容仍可被读取；含密钥的技能请在文件管理器中手动清理这两个目录。
+- **连接鉴权**：宿主提供 `connection` 服务时，未通过宿主准入的请求直接返回 401；没有该服务时仍强制 Loopback Host 围栏。
+- **链接逃逸防护**：列表沿用官方 provider 的符号链接语义；但读写、改策略与删除前用 `realpath` 校验目标必须位于技能根目录内，指向根目录外的联接点无法被越界修改。
+- **请求边界**：JSON 请求体上限 1 MB、单个技能文件上限 2 MB；名称上限 64 字符，拒绝 Windows 保留名与 `..` 等路径片段。
 
 ### 6. 🎨 原生质感与深色模式完美适配
 - 深度融合 DSH 官方 UI 体系，完全遵循官方 Design Tokens。
@@ -119,7 +128,7 @@ dsh plugin --profile desktop add link:"D:/dsh work/skills-manager"
 
 ## 📁 技能目录与 Frontmatter 规范
 
-技能文件存放在 `~/.dsh/skills`（若配置了环境变量 `$DSH_HOME`，则为 `$DSH_HOME/skills`）。
+技能文件存放在 `~/.dsh/skills`（若配置了环境变量 `$DSH_HOME`，则为 `$DSH_HOME/skills`）与 `~/.agents/skills`（`$DSH_AGENTS_HOME`）。面板同时管理这两套全局目录。
 
 插件支持两种主流布局结构：
 - **Bundle 目录型（推荐）**：`<name>/SKILL.md`，同级可存放脚本、参考资料与辅助图片。
@@ -149,12 +158,14 @@ user-invocable: true             # 设为 true 则允许用户在会话框手动
 
 | 方法 | 接口路径 | 功能说明 |
 | :--- | :--- | :--- |
-| `GET` | `/skills-manager/api` | 获取全部技能列表（元数据、有效性、策略状态、修改时间等） |
-| `GET` | `/skills-manager/api/get?name=…` | 获取指定技能的完整源码正文（供编辑使用） |
-| `POST` | `/skills-manager/api/save` | 新建 / 编辑 / 重命名技能，带乐观锁（`expectedMtimeMs`）与无损 YAML 保留 |
-| `POST` | `/skills-manager/api/policy` | 切换 `disable-model-invocation` 与 `user-invocable` 调用策略 |
-| `POST` | `/skills-manager/api/open` | 唤起系统文件管理器打开技能总目录或指定技能 Bundle 目录 |
-| `POST` | `/skills-manager/api/delete` | 将技能安全移入 `<root>/.trash/` 回收站目录 |
+| `GET` | `/skills-manager/api` | 获取全部技能列表（元数据、有效性、策略状态、修改时间与 `roots` 双目录信息） |
+| `GET` | `/skills-manager/api/get?root=…&file=…` | 获取指定技能的完整源码正文（推荐用 `root` + 相对文件路径定位；`name` 仍兼容，同名技能必须用 `file`） |
+| `POST` | `/skills-manager/api/save` | 新建 / 编辑 / 重命名技能，带乐观锁（`expectedMtimeMs`）与无损 YAML 保留；传 `originalFile` 精确定位被编辑的文件 |
+| `POST` | `/skills-manager/api/policy` | 切换 `disable-model-invocation` 与 `user-invocable` 调用策略（接受 `name` 或 `file`） |
+| `POST` | `/skills-manager/api/open` | 唤起系统文件管理器打开技能总目录或指定技能 Bundle 目录（接受 `name` 或 `file`） |
+| `POST` | `/skills-manager/api/delete` | 将技能安全移入 `<root>/.trash/` 回收站目录（接受 `name` 或 `file`） |
+
+> 所有接口均接受 `root` 参数（`dsh` 或 `agents`，缺省 `dsh`）。只传 `name` 的旧客户端在重名时仍会命中第一个匹配项；面板始终发送 `root` + `file`。
 
 ---
 
@@ -166,15 +177,23 @@ user-invocable: true             # 设为 true 则允许用户在会话框手动
 node --test "test/*.test.mjs"
 ```
 
-覆盖 21 项核心测试，包括：
-- YAML Frontmatter 往返保真度（保留块标量、未知键、注释、CRLF 换行等）。
-- API 信任围栏防护（Host 校验、同源 Origin 检查、请求体超限拦截）。
-- 乐观并发写入冲突保护与软删除移入 `.trash/` 机制。
-- 操作系统原生文件管理器唤起路径防注入。
+覆盖 43 项核心测试，包括：
+- YAML Frontmatter 往返保真度（块标量、未知键、注释、带引号键、CRLF、未闭合与重复键修复等）。
+- 双全局目录隔离：按 `root` 列表、读取、新建与删除互不串目录。
+- 数据安全：BOM、缺失 frontmatter、`/save` 省略 body、同名技能按文件寻址、仅大小写不同目录不被接管。
+- 安全边界：Host/Origin 信任围栏、宿主 `connection` 准入 401、junction 越界读写拒绝、保留名与超长名拒绝。
+- 乐观并发写入冲突保护、软删除回收站、历史快照修剪与文件管理器唤起路径防注入。
 
 ---
 
 ## 📝 更新日志
+
+### v0.3.4（2026-10-27）
+- **数据安全加固**：修复 BOM/缺失 frontmatter 保存清空正文、`/save` 省略 body 删除正文、同名技能误删误改、仅大小写不同目录被覆盖等问题；API 改为 `root` + `file` 精确寻址。
+- **YAML 保真**：带引号键、跨行引号标量、块标量、注释、重复键与旧版策略键均按语义识别；未改动字段逐字节保留，歧义值自动加引号，非字符串/未闭合值标记为需修复。
+- **安全边界**：宿主 `connection` 准入（401）、`realpath` 阻止联接点越界、Loopback Host 围栏、保留名/超长名拒绝、历史目录有界。
+- **双全局目录**：同时管理 `~/.dsh/skills` 与 `~/.agents/skills`，新增目录切换器。
+- 自动化测试增至 43 项。
 
 ### v0.3.1（2026-10-18）
 - **深色模式全量重构**：全面对齐 DSH 官方 Design Tokens（`--dsw-alias-button-primary-fill`、`--dsw-alias-label-primary-foreground` 等），彻底解决深色主题下主按钮白底白字、危险按钮视觉糊团、链接色不可读等问题。
@@ -182,7 +201,7 @@ node --test "test/*.test.mjs"
 
 ### v0.3.0
 - 新增一键打开技能根目录与单技能目录功能。
-- 引入指令字数统计与优化 Markdown 渲染排版。
+- 引入指令字数统计与正文预览排版优化。
 - 引入安全回收站（`.trash/`）与写前版本快照（`.backups/`）。
 
 ---

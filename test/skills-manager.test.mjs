@@ -99,14 +99,17 @@ function postHeaders(extra = {}) {
 async function setupApi(t) {
   const root = makeTempRoot(t);
   process.env.DSH_HOME = join(root, 'home');
+  process.env.DSH_AGENTS_HOME = join(root, 'agents-home');
   const skills = join(process.env.DSH_HOME, 'skills');
+  const agentsSkills = join(process.env.DSH_AGENTS_HOME, 'skills');
   mkdirSync(skills, { recursive: true });
+  mkdirSync(agentsSkills, { recursive: true });
   const ctx = createCtx();
   apply(ctx);
   t.after(async () => {
     for (const cleanup of ctx.cleanups.reverse()) await cleanup();
   });
-  return { root, skills, ctx };
+  return { root, skills, agentsSkills, ctx };
 }
 
 function writeBundle(skills, name, content) {
@@ -250,6 +253,8 @@ test('API rejects cross-site and mismatched-origin requests', async (t) => {
   assert.equal(crossSite.status, 403);
   const mismatch = await call(ctx, { headers: hostHeaders({ origin: 'https://evil.example' }) });
   assert.equal(mismatch.status, 403);
+  const schemeMismatch = await call(ctx, { headers: hostHeaders({ origin: 'https://127.0.0.1:30816' }) });
+  assert.equal(schemeMismatch.status, 403);
   const sameOrigin = await call(ctx, { headers: hostHeaders({ origin: 'http://127.0.0.1:30816' }) });
   assert.equal(sameOrigin.status, 200);
 });
@@ -462,4 +467,397 @@ test('API save refuses path traversal and invalid names', async (t) => {
     body: JSON.stringify({ name: '../evil', description: 'x', body: '' }),
   });
   assert.equal(badName.status, 400);
+});
+
+/* ------------------- hardening / round-trip regressions ------------------- */
+
+test('a UTF-8 BOM is flagged and stripped on the next write', () => {
+  const parsed = splitFrontmatter('\uFEFF---\nname: demo\ndescription: demo skill\n---\n\n# Body\n\nkeep me\n');
+  assert.deepEqual(parsed.problems, []);
+  assert.equal(parsed.bom, true);
+  assert.equal(parsed.body, '# Body\n\nkeep me\n');
+  const { head, eol } = serializeFrontmatter(NEXT, parsed);
+  // DSH compares the first line to "---" literally and ignores BOM-prefixed
+  // skills, so the manager must not re-emit the BOM.
+  assert.equal(buildFileContent(head, eol, parsed.body), '---\nname: demo\ndescription: demo skill\n---\n\n# Body\n\nkeep me\n');
+});
+
+test('a file without frontmatter exposes its text as body instead of nothing', () => {
+  const text = '# Just markdown\n\nimportant text\n';
+  const parsed = splitFrontmatter(text);
+  assert.equal(parsed.problems.length, 1);
+  assert.equal(parsed.body, text);
+  const { head, eol } = serializeFrontmatter(NEXT, parsed);
+  const repaired = buildFileContent(head, eol, parsed.body);
+  assert.equal(splitFrontmatter(repaired).body, text);
+});
+
+test('a quoted scalar spanning lines keeps its semantic value and its bytes', () => {
+  const text = '---\nname: demo\ndescription: "first line\n  second line"\n---\nbody\n';
+  const parsed = splitFrontmatter(text);
+  assert.equal(keyValue(parsed, 'description'), 'first line second line');
+  const next = { ...NEXT, description: 'first line second line', modelInvocable: false };
+  const out = roundTrip(text, next);
+  assert.match(out, /description: "first line\n {2}second line"/);
+  if (YAML) {
+    assert.equal(yamlFrontmatter(out).description, 'first line second line');
+    assert.equal(yamlFrontmatter(out)['disable-model-invocation'], true);
+  }
+});
+
+test('ambiguous numeric and date-like descriptions are quoted for YAML', () => {
+  for (const value of ['0x10', '0o17', '.inf', '.nan', '0123', '1e3', '2024-01-01', '- foo', '? foo', '[x]', '*anchor', '# comment']) {
+    const { head } = serializeFrontmatter({ ...NEXT, description: value }, undefined);
+    assert.match(head, new RegExp(`description: ${JSON.stringify(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    if (YAML) assert.equal(yamlFrontmatter(`${head}\n`).description, value);
+  }
+  const plain = serializeFrontmatter({ ...NEXT, description: 'demo skill' }, undefined).head;
+  assert.match(plain, /description: demo skill/);
+});
+
+test('policy writes keep block scalars and CRLF byte-for-byte', () => {
+  const text = '---\r\nname: demo\r\ndescription: |\r\n  line one\r\n  line two\r\ncustom: keep\r\n---\r\n\r\n# Body\r\n';
+  const parsed = splitFrontmatter(text);
+  assert.deepEqual(parsed.problems, []);
+  assert.equal(parsed.eol, '\r\n');
+  const description = keyValue(parsed, 'description');
+  assert.equal(description, 'line one\nline two');
+  const { head, eol } = serializeFrontmatter({ ...NEXT, description }, parsed);
+  assert.equal(head, '---\r\nname: demo\r\ndescription: |\r\n  line one\r\n  line two\r\ncustom: keep\r\n---');
+  assert.equal(buildFileContent(head, eol, parsed.body), '---\r\nname: demo\r\ndescription: |\r\n  line one\r\n  line two\r\ncustom: keep\r\n---\r\n\r\n# Body\r\n');
+});
+
+test('an unclosed frontmatter is recovered without duplicating it into the body', () => {
+  const text = '---\nname: demo\ndescription: demo skill\n\n# Body\n';
+  const parsed = splitFrontmatter(text);
+  assert.equal(parsed.unparsed, true);
+  assert.equal(parsed.recovered, true);
+  assert.equal(parsed.body, '# Body\n');
+  const { head, eol } = serializeFrontmatter(NEXT, parsed);
+  const rebuilt = buildFileContent(head, eol, parsed.body);
+  assert.equal(rebuilt, '---\nname: demo\ndescription: demo skill\n---\n\n# Body\n');
+  assert.equal((rebuilt.match(/^name:/gm) ?? []).length, 1);
+});
+
+test('legacy invocation keys keep their value and are repaired on write', (t) => {
+  const root = makeTempRoot(t);
+  const file = join(root, 'SKILL.md');
+  writeFileSync(file, '---\nname: demo\ndescription: demo skill\nmodelInvocable: false\n---\nbody\n', 'utf8');
+  const entry = describeEntry({ fallbackName: 'demo', kind: 'flat', relPath: 'demo.md', fileAbs: file });
+  assert.equal(entry.valid, false);
+  assert.equal(entry.modelInvocable, false);
+  const parsed = splitFrontmatter(readFileSync(file, 'utf8'));
+  const out = roundTrip(readFileSync(file, 'utf8'), {
+    name: entry.name,
+    description: entry.description,
+    whenToUse: entry.whenToUse,
+    modelInvocable: entry.modelInvocable,
+    userInvocable: entry.userInvocable,
+  });
+  assert.doesNotMatch(out, /modelInvocable/);
+  assert.match(out, /disable-model-invocation: true/);
+  assert.equal(splitFrontmatter(out).problems.length, 0);
+  assert.ok(parsed.segments.some((segment) => segment.kind === 'key' && segment.key === 'modelInvocable'));
+});
+
+test('duplicate frontmatter keys are reported and collapsed on write', (t) => {
+  const root = makeTempRoot(t);
+  const file = join(root, 'SKILL.md');
+  writeFileSync(file, '---\nname: demo\nname: demo\ndescription: demo skill\n---\nbody\n', 'utf8');
+  const entry = describeEntry({ fallbackName: 'demo', kind: 'flat', relPath: 'demo.md', fileAbs: file });
+  assert.equal(entry.valid, false);
+  assert.ok(entry.problems.some((problem) => problem.includes('重复键')));
+  const out = roundTrip(readFileSync(file, 'utf8'), NEXT);
+  assert.equal((out.match(/^name:/gm) ?? []).length, 1);
+  if (YAML) assert.equal(yamlFrontmatter(out).name, 'demo');
+});
+
+test('history directories keep only the newest entries', (t) => {
+  const root = makeTempRoot(t);
+  for (let i = 0; i < 5; i += 1) writeFileSync(join(root, `${i}.txt`), String(i), 'utf8');
+  __test.pruneOldEntries(root, 2);
+  assert.equal(readdirSync(root).length, 2);
+  __test.pruneOldEntries(root, 5);
+  assert.equal(readdirSync(root).length, 2);
+});
+
+test('API flags a BOM file and removes the BOM on save', async (t) => {
+  const { skills, ctx } = await setupApi(t);
+  writeBundle(skills, 'bom-skill', '\uFEFF---\nname: bom-skill\ndescription: BOM skill\n---\n\n# Keep\n\nme\n');
+  const list = await call(ctx, { headers: hostHeaders() });
+  const entry = list.json.skills.find((item) => item.file === 'bom-skill/SKILL.md');
+  assert.equal(entry.valid, false);
+  assert.ok(entry.problems.some((problem) => problem.includes('BOM')));
+  const got = await call(ctx, { headers: hostHeaders(), path: `/get?file=${encodeURIComponent(entry.file)}` });
+  assert.equal(got.json.skill.body, '# Keep\n\nme\n');
+  const saved = await call(ctx, {
+    method: 'POST',
+    path: '/save',
+    headers: postHeaders(),
+    body: JSON.stringify({
+      name: 'bom-skill',
+      description: 'BOM skill',
+      body: got.json.skill.body,
+      originalFile: entry.file,
+    }),
+  });
+  assert.equal(saved.status, 200);
+  const written = readFileSync(join(skills, 'bom-skill', 'SKILL.md'), 'utf8');
+  assert.equal(written.startsWith('\uFEFF'), false);
+  assert.equal(written, '---\nname: bom-skill\ndescription: BOM skill\n---\n\n# Keep\n\nme\n');
+  const after = await call(ctx, { headers: hostHeaders() });
+  assert.equal(after.json.skills.find((item) => item.file === 'bom-skill/SKILL.md').valid, true);
+});
+
+test('API save on a file without frontmatter keeps every byte of its text', async (t) => {
+  const { skills, ctx } = await setupApi(t);
+  mkdirSync(join(skills, 'plain-skill'), { recursive: true });
+  const original = '# Just markdown\n\nimportant text\n';
+  writeFileSync(join(skills, 'plain-skill', 'SKILL.md'), original, 'utf8');
+  const list = await call(ctx, { headers: hostHeaders() });
+  const entry = list.json.skills.find((item) => item.file === 'plain-skill/SKILL.md');
+  assert.equal(entry.valid, false);
+  const got = await call(ctx, { headers: hostHeaders(), path: `/get?file=${encodeURIComponent(entry.file)}` });
+  assert.equal(got.json.skill.body, original);
+  assert.equal(got.json.skill.rawFallback, true);
+  await call(ctx, {
+    method: 'POST',
+    path: '/save',
+    headers: postHeaders(),
+    body: JSON.stringify({
+      name: 'plain-skill',
+      description: 'repaired',
+      body: got.json.skill.body,
+      originalFile: entry.file,
+    }),
+  });
+  assert.ok(readFileSync(join(skills, 'plain-skill', 'SKILL.md'), 'utf8').includes(original));
+});
+
+test('API addresses entries by file when two skills share a name', async (t) => {
+  const { skills, ctx } = await setupApi(t);
+  writeBundle(skills, 'alpha', '---\nname: dup\ndescription: ALPHA\n---\nalpha\n');
+  writeBundle(skills, 'beta', '---\nname: dup\ndescription: BETA\n---\nbeta\n');
+  const got = await call(ctx, { headers: hostHeaders(), path: `/get?file=${encodeURIComponent('beta/SKILL.md')}` });
+  assert.equal(got.status, 200);
+  assert.equal(got.json.skill.description, 'BETA');
+  const removed = await call(ctx, {
+    method: 'POST',
+    path: '/delete',
+    headers: postHeaders(),
+    body: JSON.stringify({ name: 'dup', file: 'beta/SKILL.md' }),
+  });
+  assert.equal(removed.status, 200);
+  assert.deepEqual(readdirSync(skills).filter((item) => !item.startsWith('.')), ['alpha']);
+});
+
+test('API save cannot take over a directory that differs only by case', async (t) => {
+  const { skills, ctx } = await setupApi(t);
+  writeBundle(skills, 'CaseSkill', '---\nname: case-other\ndescription: original\n---\noriginal body\n');
+  if (!existsSync(join(skills, 'caseskill'))) {
+    t.skip('case-sensitive filesystem');
+    return;
+  }
+  const response = await call(ctx, {
+    method: 'POST',
+    path: '/save',
+    headers: postHeaders(),
+    body: JSON.stringify({ name: 'caseskill', description: 'Hijacked', body: 'HIJACKED' }),
+  });
+  assert.equal(response.status, 409);
+  assert.match(readFileSync(join(skills, 'CaseSkill', 'SKILL.md'), 'utf8'), /original body/);
+});
+
+test('API save rejects reserved device names and over-long names', async (t) => {
+  const { ctx } = await setupApi(t);
+  for (const name of ['con', 'nul', 'aux', 'com1', 'a'.repeat(65)]) {
+    const response = await call(ctx, {
+      method: 'POST',
+      path: '/save',
+      headers: postHeaders(),
+      body: JSON.stringify({ name, description: 'x', body: '' }),
+    });
+    assert.equal(response.status, 400, name);
+  }
+});
+
+test('API save without a policy field keeps the existing policy', async (t) => {
+  const { skills, ctx } = await setupApi(t);
+  writeBundle(skills, 'demo', '---\nname: demo\ndescription: demo skill\ndisable-model-invocation: true\nuser-invocable: false\n---\nbody\n');
+  const response = await call(ctx, {
+    method: 'POST',
+    path: '/save',
+    headers: postHeaders(),
+    body: JSON.stringify({ name: 'demo', description: 'demo skill', body: 'body\n', originalFile: 'demo/SKILL.md' }),
+  });
+  assert.equal(response.status, 200);
+  const written = readFileSync(join(skills, 'demo', 'SKILL.md'), 'utf8');
+  assert.match(written, /disable-model-invocation: true/);
+  assert.match(written, /user-invocable: false/);
+});
+/* ------------------- second adversarial pass regressions ------------------- */
+
+test('a quoted frontmatter key is addressed as name and never duplicated', async (t) => {
+  const { skills, ctx } = await setupApi(t);
+  writeBundle(skills, 'quoted', '---\n"name": quoted\ndescription: original text\n---\n\n# Body\n');
+  const list = await call(ctx, { headers: hostHeaders() });
+  const entry = list.json.skills.find((item) => item.file === 'quoted/SKILL.md');
+  assert.equal(entry.valid, true);
+  assert.equal(entry.name, 'quoted');
+  const saved = await call(ctx, {
+    method: 'POST',
+    path: '/save',
+    headers: postHeaders(),
+    body: JSON.stringify({ root: 'dsh', name: 'quoted', description: 'new text', body: '# Body\n', originalFile: entry.file }),
+  });
+  assert.equal(saved.status, 200);
+  const written = readFileSync(join(skills, 'quoted', 'SKILL.md'), 'utf8');
+  const parsed = splitFrontmatter(written);
+  assert.equal(parsed.segments.filter((segment) => segment.kind === 'key' && segment.key === 'name').length, 1);
+  assert.equal(keyValue(parsed, 'description'), 'new text');
+  assert.equal(parsed.body, '# Body\n');
+  if (YAML) assert.equal(yamlFrontmatter(written).name, 'quoted');
+});
+
+test('save without a body keeps the existing body instead of deleting it', async (t) => {
+  const { skills, ctx } = await setupApi(t);
+  writeBundle(skills, 'keep-body', '---\nname: keep-body\ndescription: x\n---\n\n# Body line 1\n\nBody line 2\n');
+  const saved = await call(ctx, {
+    method: 'POST',
+    path: '/save',
+    headers: postHeaders(),
+    body: JSON.stringify({ root: 'dsh', name: 'keep-body', description: 'edited', originalFile: 'keep-body/SKILL.md' }),
+  });
+  assert.equal(saved.status, 200);
+  const written = readFileSync(join(skills, 'keep-body', 'SKILL.md'), 'utf8');
+  assert.equal(splitFrontmatter(written).body, '# Body line 1\n\nBody line 2\n');
+});
+
+test('a no-op save keeps description bytes (double spaces, block scalars, comments)', async (t) => {
+  const { skills, ctx } = await setupApi(t);
+  writeBundle(skills, 'spaced', '---\nname: spaced\ndescription: "a  b\\tc"\n---\n\n# Body\n');
+  writeBundle(skills, 'blocky', '---\nname: blocky\ndescription: |\n  line one\n  line two\n---\n\n# Body\n');
+  writeBundle(skills, 'commented', '---\nname: commented\ndescription: x\n  # note about desc\n---\n\n# Body\n');
+  const list = await call(ctx, { headers: hostHeaders() });
+  const spaced = list.json.skills.find((item) => item.file === 'spaced/SKILL.md');
+  assert.equal(spaced.description, 'a  b\tc');
+  const commented = list.json.skills.find((item) => item.file === 'commented/SKILL.md');
+  assert.equal(commented.description, 'x');
+  for (const file of ['spaced/SKILL.md', 'blocky/SKILL.md', 'commented/SKILL.md']) {
+    const got = await call(ctx, { headers: hostHeaders(), path: `/get?file=${encodeURIComponent(file)}` });
+    const saved = await call(ctx, {
+      method: 'POST',
+      path: '/save',
+      headers: postHeaders(),
+      body: JSON.stringify({
+        root: 'dsh',
+        name: got.json.skill.name,
+        description: got.json.skill.description,
+        body: got.json.skill.body,
+        originalFile: file,
+      }),
+    });
+    assert.equal(saved.status, 200, file);
+  }
+  assert.match(readFileSync(join(skills, 'spaced', 'SKILL.md'), 'utf8'), /description: "a {2}b\\tc"/);
+  assert.match(readFileSync(join(skills, 'blocky', 'SKILL.md'), 'utf8'), /description: \|\n {2}line one\n {2}line two/);
+  assert.match(readFileSync(join(skills, 'commented', 'SKILL.md'), 'utf8'), /description: x\n/);
+});
+
+test('non-string and malformed frontmatter values are flagged instead of green', async (t) => {
+  const { skills, ctx } = await setupApi(t);
+  writeBundle(skills, 'bool-desc', '---\nname: bool-desc\ndescription: true\n---\n');
+  writeBundle(skills, 'flow-desc', '---\nname: flow-desc\ndescription: [a, b]\n---\n');
+  writeBundle(skills, 'open-quote', '---\nname: open-quote\ndescription: "unterminated\n---\n');
+  writeBundle(skills, 'tabbed', '---\nname: tabbed\ndescription: tab\n\tcustom: x\n---\n');
+  writeBundle(skills, 'nested-desc', '---\nname: nested-desc\ndescription:\n  nested: map\n---\n');
+  const list = await call(ctx, { headers: hostHeaders() });
+  const byFile = (file) => list.json.skills.find((item) => item.file === file);
+  assert.equal(byFile('bool-desc/SKILL.md').valid, false);
+  assert.ok(byFile('bool-desc/SKILL.md').problems.some((problem) => problem.includes('不是字符串')));
+  assert.equal(byFile('flow-desc/SKILL.md').valid, false);
+  assert.equal(byFile('open-quote/SKILL.md').valid, false);
+  assert.equal(byFile('tabbed/SKILL.md').valid, false);
+  assert.ok(byFile('tabbed/SKILL.md').problems.some((problem) => problem.includes('制表符')));
+  assert.equal(byFile('nested-desc/SKILL.md').valid, false);
+  assert.ok(byFile('nested-desc/SKILL.md').problems.some((problem) => problem.includes('映射')));
+});
+
+test('both global skill roots are listed and addressed by root key', async (t) => {
+  const { skills, agentsSkills, ctx } = await setupApi(t);
+  writeBundle(skills, 'dsh-only', '---\nname: dsh-only\ndescription: dsh root\n---\n');
+  writeBundle(agentsSkills, 'agents-only', '---\nname: agents-only\ndescription: agents root\n---\n');
+  const list = await call(ctx, { headers: hostHeaders() });
+  assert.deepEqual(list.json.roots.map((root) => root.key).sort(), ['agents', 'dsh']);
+  assert.ok(list.json.roots.every((root) => typeof root.label === 'string' && root.label.length > 0));
+  const files = list.json.skills.map((item) => `${item.rootKey}:${item.file}`).sort();
+  assert.deepEqual(files, ['agents:agents-only/SKILL.md', 'dsh:dsh-only/SKILL.md']);
+  const got = await call(ctx, { headers: hostHeaders(), path: '/get?root=agents&file=agents-only%2FSKILL.md' });
+  assert.equal(got.status, 200);
+  assert.equal(got.json.skill.rootKey, 'agents');
+  assert.equal(got.json.skill.description, 'agents root');
+  const policy = await call(ctx, {
+    method: 'POST',
+    path: '/policy',
+    headers: postHeaders(),
+    body: JSON.stringify({ root: 'agents', file: 'agents-only/SKILL.md', modelInvocable: false }),
+  });
+  assert.equal(policy.status, 200);
+  assert.equal(policy.json.root, 'agents');
+  assert.match(readFileSync(join(agentsSkills, 'agents-only', 'SKILL.md'), 'utf8'), /disable-model-invocation: true/);
+  const created = await call(ctx, {
+    method: 'POST',
+    path: '/save',
+    headers: postHeaders(),
+    body: JSON.stringify({ root: 'agents', name: 'new-agents', description: 'created in agents', body: 'hi\n' }),
+  });
+  assert.equal(created.status, 200);
+  assert.equal(created.json.root, 'agents');
+  assert.equal(existsSync(join(agentsSkills, 'new-agents', 'SKILL.md')), true);
+  assert.equal(existsSync(join(skills, 'new-agents', 'SKILL.md')), false);
+  const removed = await call(ctx, {
+    method: 'POST',
+    path: '/delete',
+    headers: postHeaders(),
+    body: JSON.stringify({ root: 'agents', file: 'agents-only/SKILL.md' }),
+  });
+  assert.equal(removed.status, 200);
+  assert.equal(existsSync(join(agentsSkills, 'agents-only')), false);
+  assert.equal(existsSync(join(skills, 'dsh-only', 'SKILL.md')), true);
+});
+
+test('when the host connection service exists, unauthenticated requests get 401', async (t) => {
+  const root = makeTempRoot(t);
+  process.env.DSH_HOME = join(root, 'home');
+  process.env.DSH_AGENTS_HOME = join(root, 'agents-home');
+  mkdirSync(join(process.env.DSH_HOME, 'skills'), { recursive: true });
+  mkdirSync(join(process.env.DSH_AGENTS_HOME, 'skills'), { recursive: true });
+  const ctx = createCtx();
+  ctx.get = (name) => (name === 'connection'
+    ? { requestRejection: () => 401 }
+    : undefined);
+  apply(ctx);
+  const response = await call(ctx, { headers: hostHeaders() });
+  assert.equal(response.status, 401);
+  assert.match(response.json.error, /会话/);
+});
+
+test('a junction inside the root cannot read or write outside it', { skip: process.platform !== 'win32' }, async (t) => {
+  const { root, skills, ctx } = await setupApi(t);
+  const outside = join(root, 'outside');
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(join(outside, 'SKILL.md'), '---\nname: linked\ndescription: outside\n---\n\noutside body\n', 'utf8');
+  symlinkSync(outside, join(skills, 'linked'), 'junction');
+  const list = await call(ctx, { headers: hostHeaders() });
+  assert.ok(list.json.skills.some((item) => item.file === 'linked/SKILL.md'));
+  const got = await call(ctx, { headers: hostHeaders(), path: '/get?file=linked%2FSKILL.md' });
+  assert.equal(got.status, 400);
+  const saved = await call(ctx, {
+    method: 'POST',
+    path: '/save',
+    headers: postHeaders(),
+    body: JSON.stringify({ root: 'dsh', name: 'linked', description: 'pwn', body: 'OVERWRITTEN\n', originalFile: 'linked/SKILL.md' }),
+  });
+  assert.equal(saved.status, 400);
+  assert.equal(readFileSync(join(outside, 'SKILL.md'), 'utf8'), '---\nname: linked\ndescription: outside\n---\n\noutside body\n');
 });

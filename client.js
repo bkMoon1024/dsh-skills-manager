@@ -7,6 +7,9 @@ window.__ModuleLoader__.load({
 
     const API = "/skills-manager/api";
     const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+    // Two global roots can legitimately contain the same relative path, so a
+    // skill is identified by root + file, never by file alone.
+    const entryKey = (skill) => `${skill.rootKey ?? "dsh"}:${skill.file}`;
 
     const NS = "skills-manager";
 
@@ -14,13 +17,15 @@ window.__ModuleLoader__.load({
       zh: {
         "nav": "技能",
         "header.title": "技能管理",
-        "header.subtitle": "管理本机 ~/.dsh/skills 中的 AI 技能，配置模型自主调用策略与指令提示词。",
+        "header.subtitle": "管理本机全局技能目录中的 AI 技能，配置模型自主调用策略与指令提示词。",
         "toolbar.new": "新建技能",
         "toolbar.refresh": "刷新",
         "toolbar.search": "搜索技能名称、描述或时机…",
         "toolbar.count": "共 {n} 个技能",
         "toolbar.filterCount": "筛选出 {filtered} / {total} 个技能",
         "toolbar.rootTitle": "技能存储目录：{root}",
+        "roots.label": "技能目录",
+        "roots.missing": "未创建",
         "toolbar.copyPath": "复制目录路径",
         "toolbar.copiedPath": "路径已复制",
         "toolbar.openDir": "打开目录",
@@ -32,7 +37,7 @@ window.__ModuleLoader__.load({
         "provider.title": "技能提供器未就绪",
         "provider.desc": "状态：{state}（已尝试 {attempts} 次）。会话可能只能看到内置技能。",
         "empty.rootMissingTitle": "技能目录尚未创建",
-        "empty.rootMissing": "本地技能目录尚未创建。点击“新建技能”创建第一个技能，系统将自动创建 ~/.dsh/skills 目录。",
+        "empty.rootMissing": "本地技能目录尚未创建。点击“新建技能”创建第一个技能，系统会自动创建该目录。",
         "empty.noneTitle": "暂无自定义技能",
         "empty.none": "本机尚未添加任何 AI 技能。创建你的第一个技能，为模型赋予专有能力与工作流准则。",
         "empty.filteredTitle": "未找到匹配技能",
@@ -44,6 +49,7 @@ window.__ModuleLoader__.load({
         "error.delete": "删除技能失败",
         "error.policy": "更新调用策略失败",
         "error.openDir": "打开目录失败",
+        "error.timeout": "请求超时，请检查技能目录是否可访问后重试",
         "error.retry": "重试",
         "row.invalid": "配置异常",
         "row.bundle": "目录型",
@@ -66,8 +72,8 @@ window.__ModuleLoader__.load({
         "card.openDir": "打开目录",
         "card.delete": "删除",
         "card.deleteConfirmTitle": "确定删除此技能？",
-        "card.deleteConfirmMsg": "技能“{name}”及其所有本地文件将被永久删除，此操作不可撤销。",
-        "card.confirmDelete": "永久删除",
+        "card.deleteConfirmMsg": "技能“{name}”及其所有本地文件将被移入技能目录的 .trash，可在文件管理器中手动找回。",
+        "card.confirmDelete": "移入 .trash",
         "card.cancelDelete": "取消",
         "card.copyCode": "复制指令",
         "card.copiedCode": "已复制",
@@ -110,13 +116,15 @@ window.__ModuleLoader__.load({
       en: {
         "nav": "Skills",
         "header.title": "Skills",
-        "header.subtitle": "Manage AI skills under ~/.dsh/skills, configure invocation policies and prompts.",
+        "header.subtitle": "Manage AI skills in your global skill directories: edit instructions and control when models may invoke them.",
         "toolbar.new": "New Skill",
         "toolbar.refresh": "Refresh",
         "toolbar.search": "Search skills by name, description, or trigger…",
         "toolbar.count": "{n} skills",
         "toolbar.filterCount": "{filtered} of {total} skills",
         "toolbar.rootTitle": "Skills directory: {root}",
+        "roots.label": "Skill directories",
+        "roots.missing": "not created",
         "toolbar.copyPath": "Copy path",
         "toolbar.copiedPath": "Path copied",
         "toolbar.openDir": "Open folder",
@@ -128,7 +136,7 @@ window.__ModuleLoader__.load({
         "provider.title": "Skill provider not ready",
         "provider.desc": "State: {state} after {attempts} attempt(s). Sessions may only see bundled skills.",
         "empty.rootMissingTitle": "Skills directory not found",
-        "empty.rootMissing": "The skills directory does not exist yet. Click “New Skill” to create ~/.dsh/skills and your first skill.",
+        "empty.rootMissing": "The skills directory does not exist yet. Click “New Skill” to create it and your first skill.",
         "empty.noneTitle": "No skills yet",
         "empty.none": "No custom skills have been added yet. Create your first skill to empower agent models with specialized behaviors.",
         "empty.filteredTitle": "No matching skills",
@@ -140,6 +148,7 @@ window.__ModuleLoader__.load({
         "error.delete": "Failed to delete skill",
         "error.policy": "Failed to update invocation policy",
         "error.openDir": "Could not open the folder",
+        "error.timeout": "The request timed out. Check that the skills folder is reachable and try again.",
         "error.retry": "Retry",
         "row.invalid": "Invalid config",
         "row.bundle": "Bundle",
@@ -162,8 +171,8 @@ window.__ModuleLoader__.load({
         "card.openDir": "Open folder",
         "card.delete": "Delete",
         "card.deleteConfirmTitle": "Delete this skill?",
-        "card.deleteConfirmMsg": "Skill “{name}” and all its local files will be permanently deleted.",
-        "card.confirmDelete": "Delete Forever",
+        "card.deleteConfirmMsg": "Skill “{name}” and all its local files will be moved to the .trash folder in the skills directory; you can restore them manually from the file manager.",
+        "card.confirmDelete": "Move to .trash",
         "card.cancelDelete": "Cancel",
         "card.copyCode": "Copy",
         "card.copiedCode": "Copied",
@@ -213,23 +222,36 @@ window.__ModuleLoader__.load({
     };
     let t = (key, params) => formatTemplate((DICTS[FALLBACK_LANG] ?? DICTS.zh)[key] ?? DICTS.zh[key] ?? key, params);
 
+    const API_TIMEOUT_MS = 20000;
+
     async function api(path, init) {
-      const response = await fetch(API + path, {
-        ...init,
-        headers: init?.body ? { "content-type": "application/json" } : undefined,
-      });
-      let payload = null;
-      try { payload = await response.json(); } catch { /* non-JSON body */ }
-      if (!response.ok || !payload?.ok) {
-        throw new Error(payload?.error ?? `${response.status} ${response.statusText}`);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+      try {
+        const response = await fetch(API + path, {
+          ...init,
+          headers: init?.body ? { "content-type": "application/json" } : undefined,
+          signal: controller.signal,
+        });
+        let payload = null;
+        try { payload = await response.json(); } catch { /* non-JSON body */ }
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error ?? `${response.status} ${response.statusText}`);
+        }
+        return payload;
+      } catch (error) {
+        if (error && error.name === "AbortError") throw new Error(t("error.timeout"));
+        throw error;
+      } finally {
+        clearTimeout(timer);
       }
-      return payload;
     }
 
     function legacyCopy(text) {
+      if (typeof document === "undefined") return;
+      let area = null;
       try {
-        if (typeof document === "undefined") return;
-        const area = document.createElement("textarea");
+        area = document.createElement("textarea");
         area.value = text;
         area.setAttribute("readonly", "");
         area.style.position = "fixed";
@@ -237,8 +259,9 @@ window.__ModuleLoader__.load({
         document.body.appendChild(area);
         area.select();
         document.execCommand("copy");
-        document.body.removeChild(area);
-      } catch { /* clipboard unavailable */ }
+      } catch { /* clipboard unavailable */ } finally {
+        if (area && area.parentNode) area.parentNode.removeChild(area);
+      }
     }
 
     function copyToClipboard(text) {
@@ -502,6 +525,51 @@ window.__ModuleLoader__.load({
 }
 .skm-path-chip:active {
   transform: scale(0.97);
+}
+
+/* Directory switcher: the host exposes two global skill roots. */
+.skm-root-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 3px;
+  border-radius: 7px;
+  background: var(--dsw-alias-bg-layer-1, rgba(128,128,128,0.06));
+  border: .5px solid var(--dsw-alias-border-l1, rgba(128,128,128,0.25));
+  align-self: flex-start;
+}
+.skm-root-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, rgba(128,128,128,0.85));
+  font-size: 12px;
+  cursor: pointer;
+  font-family: var(--ds-font-family-code, ui-monospace, SFMono-Regular, Consolas, monospace);
+  transition: background 120ms ease, color 120ms ease;
+}
+.skm-root-tab:hover {
+  color: var(--dsw-alias-label-primary, inherit);
+}
+.skm-root-tab[aria-pressed="true"] {
+  background: var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.16));
+  color: var(--dsw-alias-label-primary, inherit);
+}
+.skm-root-missing {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(128,128,128,0.16);
+}
+.skm-root-tab:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary, #4d6bfe);
+  outline-offset: 1px;
 }
 
 /* Toolbar Controls */
@@ -1322,15 +1390,22 @@ window.__ModuleLoader__.load({
 
     function SkillCard({ skill, open, onToggle, onEdit, onOpenDir, onPolicy, onDelete, pending, panelId }) {
       const [copied, setCopied] = useState(false);
+      const copiedTimer = useRef(null);
+      const problems = Array.isArray(skill.problems) ? skill.problems : [];
       const missingFile = Boolean(skill.missingFile);
       const canTogglePolicy = !missingFile && skill.valid;
+
+      useEffect(() => () => {
+        if (copiedTimer.current) clearTimeout(copiedTimer.current);
+      }, []);
 
       const handleCopyCode = async (e) => {
         e.stopPropagation();
         if (!skill.preview) return;
         await copyToClipboard(skill.preview);
         setCopied(true);
-        setTimeout(() => setCopied(false), 1800);
+        if (copiedTimer.current) clearTimeout(copiedTimer.current);
+        copiedTimer.current = setTimeout(() => setCopied(false), 1800);
       };
 
       const badges = [];
@@ -1375,7 +1450,7 @@ window.__ModuleLoader__.load({
                   jsx("span", {
                     className: "skm-row-desc",
                     "data-tone": skill.valid ? "default" : "error",
-                    children: skill.valid ? skill.description : skill.problems.join("；"),
+                    children: skill.valid ? skill.description : problems.join("；"),
                   }),
                 ],
               }),
@@ -1393,6 +1468,9 @@ window.__ModuleLoader__.load({
             id: panelId,
             "data-open": open ? "true" : "false",
             "aria-hidden": open ? "false" : "true",
+            // CSS-only collapse leaves descendants in the tab order and the
+            // accessibility tree; inert removes them while the panel is closed.
+            inert: open ? undefined : "",
             children: jsx("div", {
               className: "skm-collapse-inner",
               children: jsxs("div", {
@@ -1470,13 +1548,13 @@ window.__ModuleLoader__.load({
                       }),
                     ],
                   }) : null,
-                  !skill.valid && skill.problems.length > 0 ? jsxs("div", {
+                  !skill.valid && problems.length > 0 ? jsxs("div", {
                     className: "skm-banner",
                     "data-tone": "error",
                     role: "alert",
                     children: [
                       jsx(IconWarning, { size: 16 }),
-                      jsx("span", { children: `${t("card.problemsTitle")} ${skill.problems.join("；")}` }),
+                      jsx("span", { children: `${t("card.problemsTitle")} ${problems.join("；")}` }),
                     ],
                   }) : null,
                   skill.whenToUse ? jsxs("div", {
@@ -1496,7 +1574,7 @@ window.__ModuleLoader__.load({
                     className: "skm-policy-grid",
                     children: [
                       jsx(Switch, {
-                        id: `policy-model-${skill.name}`,
+                        id: `policy-model-${skill.file}`,
                         on: skill.modelInvocable,
                         label: t("card.modelSwitch"),
                         description: t("card.modelSwitchDesc"),
@@ -1504,7 +1582,7 @@ window.__ModuleLoader__.load({
                         onToggle: () => onPolicy(skill, { modelInvocable: !skill.modelInvocable }),
                       }),
                       jsx(Switch, {
-                        id: `policy-user-${skill.name}`,
+                        id: `policy-user-${skill.file}`,
                         on: skill.userInvocable,
                         label: t("card.userSwitch"),
                         description: t("card.userSwitchDesc"),
@@ -1554,9 +1632,11 @@ window.__ModuleLoader__.load({
       const [modelInvocable, setModelInvocable] = useState(initial.modelInvocable !== false);
       const [userInvocable, setUserInvocable] = useState(initial.userInvocable !== false);
       const [busy, setBusy] = useState(false);
+      const busyRef = useRef(false);
       const [error, setError] = useState(null);
       const [confirmDiscard, setConfirmDiscard] = useState(false);
       const isCreate = !initial.originalName;
+      const bodyChars = useMemo(() => Array.from(body).length, [body]);
 
       const dirty = useMemo(() => (
         name !== (initial.name ?? "")
@@ -1577,8 +1657,10 @@ window.__ModuleLoader__.load({
 
       const submit = async (e) => {
         if (e) e.preventDefault();
+        // A second Ctrl+S/submit can fire before the disabled prop re-renders.
+        if (busyRef.current) return;
         const trimmedName = name.trim();
-        const trimmedDesc = description.replace(/\s+/g, " ").trim();
+        const trimmedDesc = description.trim();
         if (!NAME_RE.test(trimmedName)) {
           setError(t("editor.nameInvalid"));
           return;
@@ -1587,25 +1669,29 @@ window.__ModuleLoader__.load({
           setError(t("editor.descRequired"));
           return;
         }
+        busyRef.current = true;
         setBusy(true);
         setError(null);
         try {
-          await api("/save", {
+          const payload = await api("/save", {
             method: "POST",
             body: JSON.stringify({
+              root: initial.root,
               name: trimmedName,
-              description: trimmedDesc,
+              description,
               whenToUse,
               body,
               modelInvocable,
               userInvocable,
               originalName: initial.originalName,
+              originalFile: initial.originalFile,
               expectedMtimeMs: isCreate ? undefined : initial.mtimeMs,
             }),
           });
-          onSaved(trimmedName);
+          onSaved({ root: payload.root ?? initial.root, name: trimmedName, file: payload.file });
         } catch (err) {
           setError(`${t("error.save")}：${err.message}`);
+          busyRef.current = false;
           setBusy(false);
         }
       };
@@ -1751,7 +1837,7 @@ window.__ModuleLoader__.load({
                 className: "skm-field-head",
                 children: [
                   jsx("label", { className: "skm-field-label", htmlFor: "skm-field-body", children: t("editor.body") }),
-                  jsx("span", { className: "skm-field-hint", children: t("editor.chars", { n: Array.from(body).length }) }),
+                  jsx("span", { className: "skm-field-hint", children: t("editor.chars", { n: bodyChars }) }),
                 ],
               }),
               jsx("textarea", {
@@ -1764,7 +1850,7 @@ window.__ModuleLoader__.load({
               }),
             ],
           }),
-          initial.problems && initial.problems.length > 0 ? jsxs("div", {
+          (initial.problems?.length ?? 0) > 0 ? jsxs("div", {
             className: "skm-banner",
             "data-tone": "warn",
             role: "status",
@@ -1840,20 +1926,35 @@ window.__ModuleLoader__.load({
 
     function SkillsSection() {
       const [state, setState] = useState({ loading: true });
+      const [activeRootKey, setActiveRootKey] = useState(null);
       const [query, setQuery] = useState("");
-      const [openName, setOpenName] = useState(null);
-      const [confirmName, setConfirmName] = useState(null);
+      const [openFile, setOpenFile] = useState(null);
+      const [confirmFile, setConfirmFile] = useState(null);
       const [editor, setEditor] = useState(null);
       const [editorDirty, setEditorDirty] = useState(false);
       const [copiedPath, setCopiedPath] = useState(false);
-      const [pendingName, setPendingName] = useState(null);
+      const [pendingFile, setPendingFile] = useState(null);
       const [notice, setNotice] = useState(null);
       const reqSeq = useRef(0);
+      const editorSeq = useRef(0);
       const noticeTimer = useRef(null);
+      const pathTimer = useRef(null);
 
       useEffect(() => () => {
         if (noticeTimer.current) clearTimeout(noticeTimer.current);
+        if (pathTimer.current) clearTimeout(pathTimer.current);
       }, []);
+
+      // A reload or tab close discards the editor without a word otherwise.
+      useEffect(() => {
+        if (!editorDirty) return undefined;
+        const warn = (event) => {
+          event.preventDefault();
+          event.returnValue = "";
+        };
+        window.addEventListener("beforeunload", warn);
+        return () => window.removeEventListener("beforeunload", warn);
+      }, [editorDirty]);
 
       const showNotice = (text) => {
         setNotice(text);
@@ -1867,12 +1968,25 @@ window.__ModuleLoader__.load({
         try {
           const payload = await api("/list");
           if (seq !== reqSeq.current) return;
-          setState({
-            loading: false,
-            root: payload.root,
-            rootExists: payload.rootExists,
-            skills: payload.skills,
-            provider: payload.provider,
+          const roots = payload.roots ?? [];
+          setActiveRootKey((prev) => (prev && roots.some((root) => root.key === prev) ? prev : (roots[0]?.key ?? "dsh")));
+          setState((prev) => {
+            // Keep expanded previews across refreshes; a policy toggle must not
+            // erase the instructions a user is reading. Drop stale previews.
+            const previous = new Map((prev.skills ?? []).map((skill) => [`${skill.rootKey}:${skill.file}`, skill]));
+            const skills = payload.skills.map((skill) => {
+              const old = previous.get(`${skill.rootKey}:${skill.file}`);
+              return old && old.preview !== undefined && old.mtimeMs === skill.mtimeMs
+                ? { ...skill, preview: old.preview }
+                : skill;
+            });
+            return {
+              loading: false,
+              root: payload.root,
+              roots,
+              skills,
+              provider: payload.provider,
+            };
           });
         } catch (e) {
           if (seq !== reqSeq.current) return;
@@ -1883,28 +1997,44 @@ window.__ModuleLoader__.load({
       useEffect(() => { load(); }, []);
 
       const skills = state.skills ?? [];
+      const roots = state.roots ?? [];
+      const activeRoot = roots.find((root) => root.key === activeRootKey) ?? roots[0] ?? null;
+      const rootKey = activeRoot?.key ?? "dsh";
+      const rootPath = activeRoot?.path ?? state.root ?? "";
+      const rootExists = activeRoot ? activeRoot.exists !== false : state.rootExists !== false;
+      const rootSkills = skills.filter((skill) => (skill.rootKey ?? "dsh") === rootKey);
       const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
-        if (!q) return skills;
-        return skills.filter((s) => (
+        if (!q) return rootSkills;
+        return rootSkills.filter((s) => (
           s.name.toLowerCase().includes(q)
           || (s.description && s.description.toLowerCase().includes(q))
           || (s.whenToUse && s.whenToUse.toLowerCase().includes(q))
         ));
-      }, [skills, query]);
+      }, [rootSkills, query]);
+
+      const switchRoot = (key) => {
+        setActiveRootKey(key);
+        setOpenFile(null);
+        setConfirmFile(null);
+        setQuery("");
+      };
 
       const handleCopyRootPath = async () => {
-        if (!state.root) return;
-        await copyToClipboard(state.root);
+        if (!rootPath) return;
+        await copyToClipboard(rootPath);
         setCopiedPath(true);
-        setTimeout(() => setCopiedPath(false), 2000);
+        if (pathTimer.current) clearTimeout(pathTimer.current);
+        pathTimer.current = setTimeout(() => setCopiedPath(false), 2000);
       };
 
       const openDir = async (skill) => {
         try {
           await api("/open", {
             method: "POST",
-            body: JSON.stringify(skill ? { name: skill.name } : {}),
+            body: JSON.stringify(skill
+              ? { root: skill.rootKey ?? rootKey, name: skill.name, file: skill.file }
+              : { root: rootKey }),
           });
         } catch (e) {
           setState((prev) => ({ ...prev, error: `${t("error.openDir")}：${e.message}` }));
@@ -1912,19 +2042,20 @@ window.__ModuleLoader__.load({
       };
 
       const expand = async (skill) => {
-        if (openName === skill.name) {
-          setOpenName(null);
-          setConfirmName(null);
+        const key = entryKey(skill);
+        if (openFile === key) {
+          setOpenFile(null);
+          setConfirmFile(null);
           return;
         }
-        setOpenName(skill.name);
-        setConfirmName(null);
+        setOpenFile(key);
+        setConfirmFile(null);
         if (skill.missingFile) return;
         try {
-          const payload = await api(`/get?name=${encodeURIComponent(skill.name)}`);
+          const payload = await api(`/get?root=${encodeURIComponent(skill.rootKey ?? rootKey)}&file=${encodeURIComponent(skill.file)}`);
           setState((prev) => ({
             ...prev,
-            skills: (prev.skills ?? []).map((s) => (s.file === skill.file ? { ...s, preview: payload.skill.body } : s)),
+            skills: (prev.skills ?? []).map((s) => (entryKey(s) === key ? { ...s, preview: payload.skill.body } : s)),
           }));
         } catch {
           /* preview stays blank on failure; summary remains visible */
@@ -1933,11 +2064,16 @@ window.__ModuleLoader__.load({
 
       const startEdit = async (skill) => {
         if (editorDirty && !window.confirm(t("editor.discardMsg"))) return;
-        setPendingName(skill.name);
+        const seq = ++editorSeq.current;
+        setPendingFile(entryKey(skill));
         try {
-          const payload = await api(`/get?name=${encodeURIComponent(skill.name)}`);
+          const payload = await api(`/get?root=${encodeURIComponent(skill.rootKey ?? rootKey)}&file=${encodeURIComponent(skill.file)}`);
+          if (seq !== editorSeq.current) return;
           setEditor({
             originalName: skill.name,
+            originalFile: skill.file,
+            root: skill.rootKey ?? rootKey,
+            token: seq,
             name: payload.skill.name,
             description: payload.skill.description,
             whenToUse: payload.skill.whenToUse,
@@ -1949,67 +2085,88 @@ window.__ModuleLoader__.load({
           });
           setEditorDirty(false);
         } catch (e) {
+          if (seq !== editorSeq.current) return;
           setState((prev) => ({ ...prev, error: `${t("error.load")}：${e.message}` }));
         } finally {
-          setPendingName(null);
+          if (seq === editorSeq.current) setPendingFile(null);
         }
       };
 
       const startCreate = () => {
         if (editorDirty && !window.confirm(t("editor.discardMsg"))) return;
-        setEditor({ originalName: null });
+        // A fresh token remounts the editor even if an empty "new" draft is
+        // already open, so stale text can never leak into the next skill.
+        // It also cancels an in-flight startEdit, whose finally no longer runs.
+        setEditor({ originalName: null, root: rootKey, token: ++editorSeq.current });
+        setPendingFile(null);
         setEditorDirty(false);
       };
 
       const applyPolicy = async (skill, patch) => {
-        if (!skill.valid || pendingName) return;
-        setPendingName(skill.name);
+        if (!skill.valid || pendingFile) return;
+        const key = entryKey(skill);
+        setPendingFile(key);
         // Optimistic UI update to eliminate toggle lag
         setState((prev) => ({
           ...prev,
-          skills: (prev.skills ?? []).map((s) => (s.file === skill.file ? { ...s, ...patch } : s)),
+          skills: (prev.skills ?? []).map((s) => (entryKey(s) === key ? { ...s, ...patch } : s)),
         }));
         try {
           await api("/policy", {
             method: "POST",
-            body: JSON.stringify({ name: skill.name, expectedMtimeMs: skill.mtimeMs, ...patch }),
+            body: JSON.stringify({
+              root: skill.rootKey ?? rootKey,
+              name: skill.name,
+              file: skill.file,
+              expectedMtimeMs: skill.mtimeMs,
+              ...patch,
+            }),
           });
           await load();
         } catch (e) {
           await load();
           setState((prev) => ({ ...prev, error: `${t("error.policy")}：${e.message}` }));
         } finally {
-          setPendingName(null);
+          setPendingFile(null);
         }
       };
 
       const doDelete = async (skill) => {
-        if (pendingName) return;
-        setPendingName(skill.name);
+        if (pendingFile) return;
+        const key = entryKey(skill);
+        setPendingFile(key);
         try {
-          await api("/delete", { method: "POST", body: JSON.stringify({ name: skill.name }) });
-          setConfirmName(null);
-          if (openName === skill.name) setOpenName(null);
+          await api("/delete", {
+            method: "POST",
+            body: JSON.stringify({ root: skill.rootKey ?? rootKey, name: skill.name, file: skill.file }),
+          });
+          setConfirmFile(null);
+          if (openFile === key) setOpenFile(null);
           await load();
           showNotice(t("notice.deleted"));
         } catch (e) {
           setState((prev) => ({ ...prev, error: `${t("error.delete")}：${e.message}` }));
         } finally {
-          setPendingName(null);
+          setPendingFile(null);
         }
       };
 
-      const afterSave = async (savedName) => {
+      const afterSave = async (saved) => {
         setEditor(null);
         setEditorDirty(false);
-        setOpenName(savedName);
+        const root = saved?.root ?? rootKey;
+        const file = saved?.file ?? null;
+        const key = file ? `${root}:${file}` : null;
+        setActiveRootKey(root);
+        setOpenFile(key);
         showNotice(t("notice.saved"));
         await load();
+        if (!key) return;
         try {
-          const payload = await api(`/get?name=${encodeURIComponent(savedName)}`);
+          const payload = await api(`/get?root=${encodeURIComponent(root)}&file=${encodeURIComponent(file)}`);
           setState((prev) => ({
             ...prev,
-            skills: (prev.skills ?? []).map((s) => (s.name === savedName ? { ...s, preview: payload.skill.body } : s)),
+            skills: (prev.skills ?? []).map((s) => (entryKey(s) === key ? { ...s, preview: payload.skill.body } : s)),
           }));
         } catch {
           /* preview can stay empty */
@@ -2017,6 +2174,8 @@ window.__ModuleLoader__.load({
       };
 
       const handleEditorCancel = () => {
+        editorSeq.current += 1;
+        setPendingFile(null);
         setEditor(null);
         setEditorDirty(false);
       };
@@ -2037,18 +2196,34 @@ window.__ModuleLoader__.load({
                   jsx("p", { className: "skm-header-desc", children: t("header.subtitle") }),
                 ],
               }),
-              state.root ? jsxs("button", {
+              rootPath ? jsxs("button", {
                 type: "button",
                 className: "skm-path-chip",
-                title: t("toolbar.rootTitle", { root: state.root }),
+                title: t("toolbar.rootTitle", { root: rootPath }),
                 onClick: handleCopyRootPath,
                 children: [
                   copiedPath ? jsx(IconCheck, { size: 12 }) : jsx(IconFolder, { size: 13 }),
-                  jsx("span", { children: copiedPath ? t("toolbar.copiedPath") : state.root }),
+                  jsx("span", { children: copiedPath ? t("toolbar.copiedPath") : rootPath }),
                 ],
               }) : null,
             ],
           }),
+          !editor && roots.length > 1 ? jsx("div", {
+            className: "skm-root-tabs",
+            role: "group",
+            "aria-label": t("roots.label"),
+            children: roots.map((root) => jsx("button", {
+              type: "button",
+              "aria-pressed": root.key === rootKey ? "true" : "false",
+              className: "skm-root-tab",
+              title: root.path,
+              onClick: () => switchRoot(root.key),
+              children: [
+                root.label ?? root.path,
+                root.exists === false ? jsx("span", { className: "skm-root-missing", children: t("roots.missing") }) : null,
+              ],
+            }, root.key)),
+          }) : null,
           jsxs("div", {
             className: "skm-toolbar",
             children: [
@@ -2104,12 +2279,12 @@ window.__ModuleLoader__.load({
               }),
             ],
           }),
-          !editor && skills.length > 0 ? jsx("div", {
+          !editor && rootSkills.length > 0 ? jsx("div", {
             className: "skm-meta-line",
             children: jsx("span", {
               children: query
-                ? t("toolbar.filterCount", { filtered: filtered.length, total: skills.length })
-                : t("toolbar.count", { n: skills.length }),
+                ? t("toolbar.filterCount", { filtered: filtered.length, total: rootSkills.length })
+                : t("toolbar.count", { n: rootSkills.length }),
             }),
           }) : null,
           providerWarning ? jsxs("div", {
@@ -2151,6 +2326,7 @@ window.__ModuleLoader__.load({
             children: [jsx(IconCheck, { size: 16 }), jsx("span", { children: notice })],
           }) : null,
           editor ? jsx(Editor, {
+            key: `${editor.root ?? "dsh"}:${editor.originalFile ?? "new"}:${editor.token ?? 0}`,
             initial: editor,
             onCancel: handleEditorCancel,
             onSaved: afterSave,
@@ -2158,14 +2334,14 @@ window.__ModuleLoader__.load({
           }) : jsxs("div", {
             className: "skm-list",
             children: [
-              state.loading && skills.length === 0 ? jsxs("div", {
+              state.loading && rootSkills.length === 0 ? jsxs("div", {
                 className: "skm-banner",
                 children: [
                   jsx(IconRefresh, { size: 14, className: "skm-icon-spin" }),
                   jsx("span", { children: t("loading") }),
                 ],
               }) : null,
-              !state.loading && state.rootExists === false ? jsxs("div", {
+              !state.loading && !state.error && rootExists === false ? jsxs("div", {
                 className: "skm-empty-card",
                 children: [
                   jsx("div", { className: "skm-empty-icon", children: jsx(IconFolder, { size: 24 }) }),
@@ -2179,7 +2355,7 @@ window.__ModuleLoader__.load({
                   }),
                 ],
               }) : null,
-              !state.loading && state.rootExists !== false && skills.length === 0 ? jsxs("div", {
+              !state.loading && !state.error && rootExists !== false && rootSkills.length === 0 ? jsxs("div", {
                 className: "skm-empty-card",
                 children: [
                   jsx("div", { className: "skm-empty-icon", children: jsx(IconSparkle, { size: 24 }) }),
@@ -2193,7 +2369,7 @@ window.__ModuleLoader__.load({
                   }),
                 ],
               }) : null,
-              !state.loading && skills.length > 0 && filtered.length === 0 ? jsxs("div", {
+              !state.loading && rootSkills.length > 0 && filtered.length === 0 ? jsxs("div", {
                 className: "skm-empty-card",
                 children: [
                   jsx("div", { className: "skm-empty-icon", children: jsx(IconSearch, { size: 24 }) }),
@@ -2209,20 +2385,20 @@ window.__ModuleLoader__.load({
               }) : null,
               filtered.map((skill) => jsx(SkillCard, {
                 skill,
-                open: openName === skill.name,
-                pending: pendingName === skill.name,
-                panelId: `skm-panel-${skill.file.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+                open: openFile === entryKey(skill),
+                pending: pendingFile === entryKey(skill),
+                panelId: `skm-panel-${entryKey(skill).replace(/[^a-zA-Z0-9_-]/g, "-")}`,
                 onToggle: () => expand(skill),
                 onEdit: () => startEdit(skill),
                 onOpenDir: () => openDir(skill),
                 onPolicy: applyPolicy,
                 onDelete: {
-                  confirm: confirmName === skill.name,
-                  onAsk: () => setConfirmName(skill.name),
+                  confirm: confirmFile === entryKey(skill),
+                  onAsk: () => setConfirmFile(entryKey(skill)),
                   onConfirm: () => doDelete(skill),
-                  onCancel: () => setConfirmName(null),
+                  onCancel: () => setConfirmFile(null),
                 },
-              }, skill.file)),
+              }, entryKey(skill))),
             ],
           }),
         ],
@@ -2237,7 +2413,7 @@ window.__ModuleLoader__.load({
           t = ctx.locale.bind(NS);
         }
         ctx.slots.inject("settings.section", () => ctx.slots.register(
-          { name: "settings.section", id: "skills", order: 16, label: () => t("nav") },
+          { name: "settings.section", id: "skills", order: 16, locale: NS, label: () => t("nav") },
           SkillsSection,
         ));
       },

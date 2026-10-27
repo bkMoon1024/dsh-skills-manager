@@ -7,7 +7,7 @@
 [![Release](https://img.shields.io/github/v/release/daha1216/dsh-skills-manager?color=4d6bfe.svg?style=flat-square)](https://github.com/daha1216/dsh-skills-manager/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](./LICENSE)
 [![DSH plugin](https://img.shields.io/badge/DSH-plugin-4A90D9.svg?style=flat-square)](https://github.com/topics/dsh-plugin)
-[![Tests Passing](https://img.shields.io/badge/tests-21%20passed-brightgreen.svg?style=flat-square)](https://github.com/daha1216/dsh-skills-manager)
+[![Tests Passing](https://img.shields.io/badge/tests-43%20passed-brightgreen.svg?style=flat-square)](https://github.com/daha1216/dsh-skills-manager)
 
 [中文](./README.md) · **English**
 
@@ -41,7 +41,8 @@ In DeepSeek Harness (DSH), **Skills** are vital assets that provide agents with 
 ## ✨ Key Features
 
 ### 1. 🔍 Comprehensive Skill Overview & Instant Search
-- **Automatic catalog scanning**: Scans your skills directory (defaults to `~/.dsh/skills`, respecting `$DSH_HOME` and symlinks/junctions).
+- **Dual global-root scanning**: Covers both `~/.dsh/skills` and `~/.agents/skills` (honoring `$DSH_HOME` / `$DSH_AGENTS_HOME` and the official provider's symlink/junction semantics).
+- **Directory switcher**: Each root is listed and created in independently; a header tab switches between them, and every edit, delete, or policy change carries its root key so operations never cross roots.
 - **Dual layout support**: Seamlessly handles both `<name>/SKILL.md` (bundle layout) and `<name>.md` (flat layout).
 - **Rich metadata at a glance**: Displays skill validity status, layout badges, instruction character count (ideal for token budgeting), and last modified timestamp.
 - **Fuzzy instant search**: Filter skills in real-time by **name**, **description**, or **trigger scenario (`whenToUse`)**.
@@ -53,19 +54,27 @@ Every skill card features standalone policy switches:
 - **Lossless YAML preservation**: Updates only the targeted policy fields. **Comments, custom frontmatter keys, CRLF line endings, and multiline block scalars remain 100% intact**.
 
 ### 3. 📝 Live Instruction Preview, Copy & Quick Editing
-- **Rendered Markdown preview**: Expand any card to read formatted `SKILL.md` instructions, complete with a "Copy Prompt" button.
+- **Monospace source preview**: Expand any card to read the raw `SKILL.md` instructions with line breaks preserved, complete with a "Copy Prompt" button.
 - **Built-in lightweight editor**: Create or modify skills directly in the browser; supports `Ctrl/Cmd + S` to save and `Esc` to cancel.
-- **Safe editing guards**: Built-in optimistic concurrency checking (`expectedMtimeMs`) and unsaved changes confirmation dialogs.
+- **Safe editing guards**: Built-in optimistic concurrency checking (`expectedMtimeMs`) and unsaved changes confirmation dialogs; reloading or closing the tab while editing also triggers the browser's leave confirmation.
+- **Damaged-file repair**: A `SKILL.md` with a leading BOM, missing frontmatter, or duplicate keys is marked as needing repair; saving keeps its body text and rebuilds valid frontmatter instead of discarding content.
 
 ### 4. 📁 Seamless OS File Manager Integration
 - **Open root folder**: One-click toolbar action to launch your native file manager (Windows Explorer, macOS Finder, Linux xdg-open) targeting the skills root.
 - **Open skill bundle**: Quickly open a specific skill's directory to inspect or add companion scripts, templates, and assets.
-- **Direct config shortcut**: "Open Config File" button right in the header.
+- **Copy root path**: The header shows the active skills root; click it to copy the full path.
 
 ### 5. 🛡️ Production-Grade Safety Architecture
 - **Safe soft-deletion (.trash)**: Deleting a skill moves it into `<root>/.trash/` instead of executing a permanent deletion, preventing accidental work loss.
 - **Automatic pre-write backups**: Every save creates a timestamped copy in `<root>/.backups/`.
 - **Strict trust fence**: REST APIs enforce loopback / trusted host checks, strict same-origin headers, bounded request bodies, and path traversal guards.
+- **Precise identity for duplicate names**: APIs address a skill by its relative file path, so editing, deleting, or toggling a policy only affects the card the user opened even when two skills declare the same name.
+- **Name and collision guards**: Windows device names (`con`, `nul`, `com1`, …) and names longer than 64 characters are rejected; a directory differing only in case is never reused, so existing skills cannot be overwritten.
+- **Bounded history**: `.backups` keeps the newest 200 snapshots and `.trash` the newest 100 entries, so long-term use does not grow without limit.
+- **Retention boundary**: `.backups` and `.trash` are plaintext copies on disk; sensitive content from earlier versions or deleted skills remains readable. Clean those folders manually for skills that hold secrets.
+- **Connection authorization**: When the host exposes its `connection` service, requests rejected by host admission get 401; without that service the loopback Host fence still applies.
+- **Link-escape protection**: Listing follows symlinks like the official provider, but reads, writes, policy changes, and deletes first resolve `realpath` and refuse any target outside the skill root.
+- **Request bounds**: JSON bodies are capped at 1 MB, a single skill file at 2 MB; names are capped at 64 characters and Windows device names / path fragments are rejected.
 
 ### 6. 🎨 First-Class Dark Theme & Bilingual Support
 - Strictly aligned with DSH design guidelines and official Design Tokens.
@@ -117,7 +126,7 @@ dsh plugin --profile desktop add link:"D:/dsh work/skills-manager"
 
 ## 📁 Skill Directory & Format Specification
 
-Skills reside in `~/.dsh/skills` (or `$DSH_HOME/skills` when configured).
+Skills reside in `~/.dsh/skills` (or `$DSH_HOME/skills`) and `~/.agents/skills` (`$DSH_AGENTS_HOME`); the panel manages both global roots.
 
 Supported structures:
 - **Bundle layout (Recommended)**: `<name>/SKILL.md` (can include adjacent assets and scripts).
@@ -148,11 +157,13 @@ The host backend (`index.js`) exposes these trusted RESTful endpoints:
 | Method | Path | Description |
 | :--- | :--- | :--- |
 | `GET` | `/skills-manager/api` | Enumerate all skills with metadata, policies, and mtime |
-| `GET` | `/skills-manager/api/get?name=…` | Retrieve full skill source for editing |
-| `POST` | `/skills-manager/api/save` | Create / edit / rename with optimistic concurrency and lossless YAML |
-| `POST` | `/skills-manager/api/policy` | Toggle `disable-model-invocation` and `user-invocable` |
-| `POST` | `/skills-manager/api/open` | Launch the OS file manager for root or specific skill bundle |
-| `POST` | `/skills-manager/api/delete` | Move a skill safely to `<root>/.trash/` |
+| `GET` | `/skills-manager/api/get?root=…&file=…` | Retrieve full skill source for editing (prefer `root` + relative file path; `name` still works, but duplicate names require `file`) |
+| `POST` | `/skills-manager/api/save` | Create / edit / rename with optimistic concurrency and lossless YAML; pass `originalFile` to address the edited file exactly |
+| `POST` | `/skills-manager/api/policy` | Toggle `disable-model-invocation` and `user-invocable` (accepts `name` or `file`) |
+| `POST` | `/skills-manager/api/open` | Launch the OS file manager for root or a specific skill bundle (accepts `name` or `file`) |
+| `POST` | `/skills-manager/api/delete` | Move a skill safely to `<root>/.trash/` (accepts `name` or `file`) |
+
+> Every endpoint accepts `root` (`dsh` or `agents`, default `dsh`). Name-only legacy clients still hit the first match on duplicates; this panel always sends `root` + `file`.
 
 ---
 
@@ -164,11 +175,18 @@ The repository includes a comprehensive test suite based on the Node.js native t
 node --test "test/*.test.mjs"
 ```
 
-Covers 21 unit tests, including frontmatter round-trip fidelity, trust fence enforcement, soft-deletion handling, and shell path sanitization.
+Covers 43 tests, including frontmatter round-trip fidelity (block scalars, quoted keys, comments, CRLF, unclosed and duplicate-key repair), dual-root isolation, BOM / missing-frontmatter data-loss regressions, file-addressed duplicate names, case-insensitive collision refusal, host connection admission (401), junction escape refusal, bounded history, and shell path sanitization.
 
 ---
 
 ## 📝 Changelog Highlights
+
+### v0.3.4 (2026-10-27)
+- **Data-safety hardening**: Fixed body loss when saving BOM / missing-frontmatter files, `/save` without `body` deleting instructions, duplicate-name skills being edited or deleted by the wrong file, and case-only directory takeover; APIs now address skills by `root` + `file`.
+- **YAML fidelity**: Quoted keys, multi-line quoted scalars, block scalars, comments, duplicate keys, and legacy policy keys are understood semantically; untouched values keep their exact bytes, ambiguous values are quoted, and non-string / unterminated values are flagged for repair.
+- **Security boundaries**: Host `connection` admission (401), `realpath` escape refusal, loopback Host fence, reserved/over-long name rejection, bounded history directories.
+- **Dual global roots**: Manages `~/.dsh/skills` and `~/.agents/skills` with a directory switcher.
+- Test suite grew to 43 tests.
 
 ### v0.3.1 (2026-10-18)
 - **Dark mode token revamp**: Replaced mismatched tokens with official DSH tokens (`--dsw-alias-button-primary-fill`, `--dsw-alias-label-primary-foreground`, etc.), resolving illegible white-on-white text and fuzzy contrast in dark mode.
@@ -176,7 +194,7 @@ Covers 21 unit tests, including frontmatter round-trip fidelity, trust fence enf
 
 ### v0.3.0
 - Added one-click actions to open skill root and bundle folders in OS file manager.
-- Introduced prompt character count calculations and refined markdown typography.
+- Introduced prompt character counts and improved the raw-source preview typography.
 - Added soft-deletion into `.trash/` and automatic pre-write backups into `.backups/`.
 
 ---
